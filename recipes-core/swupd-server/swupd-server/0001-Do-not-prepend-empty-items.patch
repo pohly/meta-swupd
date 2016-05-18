@@ -1,0 +1,37 @@
+From 0b379e29a9d50bf5cb126ff7dc0228070f094f20 Mon Sep 17 00:00:00 2001
+From: Igor Stoppa <igor.stoppa@intel.com>
+Date: Wed, 18 May 2016 14:40:30 +0300
+Subject: [PATCH] Do not prepend empty items
+
+When the item is not found, do not add it to the list.
+It will cause segfaults later on, where the code
+dereferences the pointer under the assumption that it is
+not NULL.
+
+Upstream-Status: Submitted
+[https://github.com/clearlinux/swupd-server/pull/22]
+
+Signed-off-by: Igor Stoppa <igor.stoppa@intel.com>
+---
+ src/create_update.c | 4 +++-
+ 1 file changed, 3 insertions(+), 1 deletion(-)
+
+diff --git a/src/create_update.c b/src/create_update.c
+index 082c82c..e8f2b9a 100644
+--- a/src/create_update.c
++++ b/src/create_update.c
+@@ -387,8 +387,10 @@ int main(int argc, char **argv)
+ 		name_includes = manifest->includes;
+ 		while (name_includes) {
+ 			char *name = name_includes->data;
++			gpointer tmp = g_hash_table_lookup(new_manifests, name);
++			if (tmp)
++				manifest_includes = g_list_prepend(manifest_includes, tmp);
+ 			name_includes = g_list_next(name_includes);
+-			manifest_includes = g_list_prepend(manifest_includes, g_hash_table_lookup(new_manifests, name));
+ 		}
+ 		manifest->includes = manifest_includes;
+ 		manifest_includes = NULL;
+-- 
+2.1.4
+

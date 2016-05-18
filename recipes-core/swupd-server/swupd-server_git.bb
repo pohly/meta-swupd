@@ -7,10 +7,10 @@ DEPENDS = "file glib-2.0 rsync openssl libarchive bsdiff bzip2"
 DEPENDS_append_class-native = " bzip2-replacement-native"
 
 PV = "3.2.3+git${SRCPV}"
-SRC_URI = "\
-    git://github.com/clearlinux/swupd-server.git;protocol=https \
-    file://fullfiles.c-work-around-pseudo-bug.patch \
-"
+SRC_URI = "git://github.com/clearlinux/swupd-server.git;protocol=https \
+           file://fullfiles.c-work-around-pseudo-bug.patch \
+           file://0001-Do-not-prepend-empty-items.patch \
+           "
 SRCREV = "9d4df7e0350d3d8d1aa8af9f92d752046dbc72d0"
 
 S = "${WORKDIR}/git"
