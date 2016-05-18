@@ -34,11 +34,6 @@ OS_VERSION ??= "${DISTRO_VERSION}"
 
 IMAGE_INSTALL_append = " swupd-client os-release"
 
-# We need to preserve xattrs which is only supported by GNU tar >= 1.27
-# to be sure this functionality works as expected use the tar-replacement-native
-DEPENDS += "tar-replacement-native"
-EXTRANATIVEPATH += "tar-native"
-
 inherit distro_features_check
 REQUIRED_DISTRO_FEATURES = "systemd"
 
