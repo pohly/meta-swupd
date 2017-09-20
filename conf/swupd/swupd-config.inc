@@ -49,7 +49,7 @@ python () {
     try:
         ver = int(ver)
     except ValueError:
-        bb.fatal("Invalid value for OS_VERSION (%s), must be a non-negative integer value." % ver)
+        raise bb.parse.SkipRecipe("Invalid value for OS_VERSION (%s), must be a non-negative integer value." % ver)
     if ver <= 0 or ver > 2147483647:
-        bb.fatal('OS_VERSION outside of valid range (> 0, <= 2147483647): %d' % ver)
+        raise bb.parse.SkipRecipe('OS_VERSION outside of valid range (> 0, <= 2147483647): %d' % ver)
 }
