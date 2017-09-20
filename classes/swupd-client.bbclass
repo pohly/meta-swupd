@@ -59,6 +59,16 @@ swupd_patch_os_release () {
 swupd_patch_os_release[vardepsexclude] = "OS_VERSION"
 ROOTFS_POSTPROCESS_COMMAND += "swupd_patch_os_release; "
 
+# swupd-client's verifytime command relies on /usr/share/clear/versionstamp
+# containing the seconds since the epoch when the image was created.
+python swupd_create_versionstamp () {
+    import time
+    dir = d.getVar('IMAGE_ROOTFS') + '/usr/share/clear'
+    bb.utils.mkdirhier(dir)
+    with open(dir + '/versionstamp', 'w') as f:
+        f.write('%d' % time.time())
+}
+ROOTFS_POSTPROCESS_COMMAND += "swupd_create_versionstamp; "
 
 def hash_swupd_pinned_pubkey(d):
     pubkey = d.getVar('SWUPD_PINNED_PUBKEY', True)

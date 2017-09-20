@@ -5,14 +5,9 @@ LIC_FILES_CHKSUM = "file://COPYING;md5=f8d90fb802930e30e49c39c8126a959e"
 
 DEPENDS = "glib-2.0 curl openssl libarchive bsdiff"
 
-PV = "3.7.2+git${SRCPV}"
-SRC_URI = "git://github.com/clearlinux/swupd-client.git;protocol=https \
-           file://Change-systemctl-path-to-OE-systemctl-path.patch \
-           file://0001-Add-configure-option-to-re-enable-updating-of-config.patch \
-           file://ignore-xattrs-when-verifying-Manifest-files.patch \
-           file://0001-fix-enable-xattr.patch \
-           "
-SRCREV = "b43ad9748ea690f69f924b6cae9a83c3886514b6"
+PV = "3.12.0"
+SRC_URI = "git://github.com/clearlinux/swupd-client.git;protocol=https"
+SRCREV = "89a47cde78331e4a2b1958da847670e3cfa55fae"
 
 S = "${WORKDIR}/git"
 
@@ -46,13 +41,46 @@ EXTRA_OECONF = "\
 PACKAGECONFIG ??= "stateless"
 PACKAGECONFIG[stateless] = ",--disable-stateless"
 
-FILES_${PN} += "\
-    /usr/share \
-    ${systemd_system_unitdir}/multi-user.target.wants* \
-    /var/lib/swupd \
+do_patch[postfuncs] += "fix_paths "
+fix_paths () {
+    # /usr/bin/systemctl is currently hard-coded in src/scripts.c update_triggers(),
+    # which may or may not be the right path.
+    sed -i -e 's;/usr/bin/systemctl;${bindir}/systemctl;g' ${S}/src/*
+}
+
+PACKAGES =+ " \
+    ${PN}-verifytime \
+    ${PN}-verifytime-service \
+    ${PN}-update-service \
+    ${PN}-check-service \
 "
 
-SYSTEMD_SERVICE_${PN} = "check-update.timer check-update.service swupd-update.timer swupd-update.service"
-SYSTEMD_AUTO_ENABLE_${PN} = "disable"
+# swupd_init() invokes verifytime.
+RDEPENDS_${PN} = "${PN}-verifytime"
+
+FILES_${PN}-verifytime = " \
+    ${bindir}/verifytime \
+"
+
+FILES_${PN}-verifytime-service = " \
+    ${systemd_system_unitdir}/verifytime.service \
+"
+RDEPENDS_${PN}-update-service = "${PN}-verifytime"
+SYSTEMD_SERVICE_${PN}-verifytime-service = "verifytime.service"
+SYSTEMD_AUTO_ENABLE_${PN}-verifytime-service = "enable"
+
+FILES_${PN}-update-service = " \
+    ${systemd_system_unitdir}/swupd-update.* \
+"
+RDEPENDS_${PN}-update-service = "${PN}"
+SYSTEMD_SERVICE_${PN}-update-service = "swupd-update.timer swupd-update.service"
+SYSTEMD_AUTO_ENABLE_${PN}-update-service = "enable"
+
+FILES_${PN}-check-service = " \
+    ${systemd_system_unitdir}/check-update.* \
+"
+RDEPENDS_${PN}-check-service = "${PN}"
+SYSTEMD_SERVICE_${PN}-check-service = "check-update.timer check-update.service"
+SYSTEMD_AUTO_ENABLE_${PN}-check-service = "enable"
 
 BBCLASSEXTEND = "native"
