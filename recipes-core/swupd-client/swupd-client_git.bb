@@ -32,7 +32,9 @@ RRECOMMENDS_${PN}_class-target = "os-release"
 SWUPD_CLIENT_FORMAT = "4"
 RPROVIDES_${PN} = "swupd-client-format${SWUPD_CLIENT_FORMAT}"
 
-inherit pkgconfig autotools systemd
+inherit pkgconfig autotools systemd distro_features_check
+
+REQUIRED_DISTRO_FEATURES_class-target = "systemd"
 
 EXTRA_OECONF = "\
     --with-systemdsystemunitdir=${systemd_system_unitdir} \
