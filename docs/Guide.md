@@ -250,20 +250,8 @@ used to provide an image which can be directly flashed to the product hardware.
 
 ## Control variables
 
-Several variables can be set to tune the way swupd-image works:
-
-* `SWUPD_GENERATE` — if set to *0* i.e. `SWUPD_GENERATE = "0"` swupd update
-artefact processing will be skipped but all tasks of the `swupd-image` class
-will be executed. This is useful both for debugging the `swupd-image` class and
-in a scenario where it might be desirable to generate the chroot-like bundle
-directories without performing an processing with swupd.
-* `SWUPD_DELTAPACKS` — if set to *0* i.e. `SWUPD_DELTAPACKS="0"` swupd
-delta-packs will not be generated.
-* `SWUPD_N_DELTAPACKS` — the number of previous releases against which to
-generate delta-packs, defaults to 2.
-* `SWUPD_VERSION_STEP` — Amount the OS_VERSION should be increased by for each
-release. Used by the delta pack looping to generate delta packs going back up to
-SWUPD_N_DELTAPACK releases.
+Several variables can be set to tune the way swupd-image works. They are documented
+in conf/swupd/swupd-config.inc.
 
 ## Using swupd client
 
