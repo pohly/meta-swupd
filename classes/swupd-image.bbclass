@@ -2,17 +2,6 @@
 # swupd-server and calls swupd-server to process the inputs into update
 # artefacts for consumption by swupd-client.
 #
-# Usage:
-# * inherit this class in your core OS image. swupd-based OS's use bundles, the
-#   primary one of which, os-core, is defined as the contents of this image.
-# * Assign a list of names for bundles you wish to generate to the
-#   SWUPD_BUNDLES variable i.e. SWUPD_BUNDLES = "feature_one feature_two"
-# * Assign a list of packages for which their content should be included in
-#   a bundle to a varflag of BUNDLE_CONTENTS which matches the bundle name
-#   i.e. BUNDLE_CONTENTS[feature_one] = "package_one package_three package_six"
-# * Ensure the OS_VERSION variable is assigned an integer value and increased
-#   before each image build which should generate swupd update artefacts.
-#
 # See docs/Guide.md for more information.
 
 inherit swupd-client
@@ -29,59 +18,6 @@ SWUPD_IMAGE_MANIFEST_SUFFIX = ".extra-content.txt"
 # Name of the base image. Always set, constant (unlike PN, which is
 # different in the different virtual images).
 SWUPD_IMAGE_PN = "${@ d.getVar('PN_BASE', True) or d.getVar('PN', True)}"
-
-# Main directory in which swupd is invoked. The actual output which needs
-# to be published will be in the "www" sub-directory.
-DEPLOY_DIR_SWUPD = "${DEPLOY_DIR}/swupd/${MACHINE}/${SWUPD_IMAGE_PN}"
-
-# User configurable variables to disable all swupd processing or deltapack
-# generation.
-SWUPD_GENERATE ??= "1"
-
-# By default, a new swupd update re-uses unchanged files from the
-# previous build ("incremental update") and all changed files are
-# stored in compressed tar archives (one per file). In this mode,
-# swupd-client must download all modified files with multiple
-# HTTP GET requests.
-#
-# To make updating more efficient, swupd can also prepare a single
-# archive for updating from an older version to the current one
-# ("delta update"). This archive then either contains modified files
-# or even binary deltas (depending on what is smaller). Because
-# generating deltas against all previous versions does not scale
-# (build times and disk space would grow exponentially), the list of
-# versions against which deltas are calculated must be chosen
-# carefully.
-#
-# In a rolling release model where devices are expected to update to the
-# latest version shortly after it gets published, generating deltas against
-# some recent versions makes sense.
-#
-# In a release model based on milestone releases it might be better to
-# generate deltas against those milestones.
-#
-# Because meta-swupd cannot make assumptions about which model is
-# used, generating deltas is disabled by default. To enable it, set
-# SWUPD_DELTAPACK_VERSIONS to a space-separated list of version
-# numbers.
-SWUPD_DELTAPACK_VERSIONS ??= ""
-
-# Determines the verbosity of some messages about major steps in the
-# update processing. "bbplain" makes them visible in the bitbake output.
-SWUPD_LOG_FN ??= "bbdebug 1"
-
-# We don't know exactly which formats will be in use during
-# do_swupd_update. It depends on the content of the update
-# repo, which is unavailable when dependencies are evaluated
-# in preparation of the build.
-#
-# For now we simply build all supported server versions.
-SWUPD_SERVER_FORMATS = "3 4"
-
-# When doing format changes, this version number is used for the intermediate
-# release. Default is OS_VERSION - 1. There's a separate sanity check for
-# OS_VERSION in the .inc file, so this code should always work.
-OS_VERSION_INTERIM ?= "${@ ${OS_VERSION} - 1 }"
 
 # We need to preserve xattrs, which works with bsdtar out of the box.
 # It also has saner file handling (less syscalls per file) than GNU tar.

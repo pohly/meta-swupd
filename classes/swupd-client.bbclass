@@ -17,28 +17,6 @@ require conf/swupd/swupd-config.inc
 
 PACKAGE_INSTALL_append = " swupd-client-format${SWUPD_TOOLS_FORMAT}"
 
-# The information about where to find version information and actual
-# content is needed in several places:
-# - the swupd client in the image gets configured such that it uses that as default
-# - swupd server needs information about the previous build
-#
-# The version URL determines what the client picks as the version that it updates to.
-# The content URL must have all builds ever produced and is expected to also
-# have the corresponding version information.
-#
-# To build the very first version of an image, set these to empty.
-# Errors while accessing the server (as the non-existent download.example.com)
-# or not having any previous build on that server are fatal. The latter
-# is necessary to detect misconfiguration.
-SWUPD_VERSION_URL ??= "http://download.example.com/updates/my-distro/milestone/${MACHINE}/${SWUPD_IMAGE_PN}"
-SWUPD_CONTENT_URL ??= "http://download.example.com/updates/my-distro/builds/${MACHINE}/${SWUPD_IMAGE_PN}"
-
-# An absolute path for a file containing the SSL certificate that is
-# is to be used for verifying https connections to the version and content
-# derver.
-SWUPD_PINNED_PUBKEY ??= ""
-
-
 # swupd-client checks VERSION_ID, which must match the OS_VERSION
 # used for generating swupd bundles in the current build.
 #
