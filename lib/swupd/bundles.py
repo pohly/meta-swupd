@@ -1,3 +1,4 @@
+import errno
 import glob
 import re
 import subprocess
@@ -237,6 +238,12 @@ def download_old_versions(d):
                 latest.write(str(version))
         except urllib.error.HTTPError as http_error:
             if http_error.code == 404:
+                bb.debug(1, '%s does not exist, skipping that format' % url)
+            else:
+                raise
+        except urllib.error.URLError as url_error:
+            # Happens for file:// URLs.
+            if isinstance(url_error.reason, OSError) and url_error.reason.errno == errno.ENOENT:
                 bb.debug(1, '%s does not exist, skipping that format' % url)
             else:
                 raise
