@@ -1,5 +1,6 @@
-# This version number *must* map to VERSION_ID in /etc/os-release and *must* be
-# a non-negative integer that fits in an int.
+# This version number *must* be a non-negative integer that fits in an int.
+# It will be used as VERSION_ID in /usr/lib/os-release by images using
+# swupd.
 OS_VERSION ??= "${DISTRO_VERSION}"
 python () {
     ver = d.getVar('OS_VERSION', True) or 'invalid'
