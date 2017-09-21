@@ -72,7 +72,7 @@ software that might be installed on the OS.
 
 For more details see the Clear Linux Project's documentation:
 * [Bundles overview](https://clearlinux.org/documentation/bundles_overview.html).
-* [About software update](https://clearlinux.org/documentation/swupdate_about_sw_update.html)
+* [About software update](https://clearlinux.org/documentation/clear-linux/concepts/swupd-about.html)
 * [Stateless feature description](https://clearlinux.org/features/stateless)
 
 ## OpenEmbedded/Yocto Project considerations
@@ -108,7 +108,7 @@ image creation.
 
 ### update-alternatives
 
-As the `os-core` bundle must provide an unchanging (at least within the same OS version) which other bundles can't modify we must be wary of recipes which use `update-alternatives`.
+As the `os-core` bundle must provide an unchanging content (at least within the same OS version) which other bundles can't modify we must be wary of recipes which use `update-alternatives`.
 
 Due to the way meta-swupd constructs the swupd-based OS and the resulting images
 and update stream artefacts we can find ourselves in a situation where the
@@ -236,7 +236,7 @@ files into the system and not somehow alter the core image's contents.
 7. (optional) Define extra images, consisting of the os-core with any number of
 additional bundles installed, which can be built. Do this by setting the
 `SWUPD_IMAGES` variable to a list of additional image name suffixes and
-assigning the names of bundles to inclde to a varflag matching the defined name.
+assigning the names of bundles to include to a varflag matching the defined name.
 For example:
 ```
 SWUPD_IMAGES = "product1"
