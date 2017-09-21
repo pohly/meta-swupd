@@ -421,8 +421,8 @@ END
         done
     }
 
-    if [ "${SWUPD_CONTENT_URL}" ]; then
-        content_url_parameter="--content-url ${SWUPD_CONTENT_URL}"
+    if [ "${SWUPD_CONTENT_BUILD_URL}" ]; then
+        content_url_parameter="--content-url ${SWUPD_CONTENT_BUILD_URL}"
     else
         content_url_parameter=""
     fi

@@ -204,14 +204,14 @@ def download_old_versions(d):
     a normal build and thus is not on the critical path.
     """
 
-    content_url = d.getVar('SWUPD_CONTENT_URL', True)
-    version_url = d.getVar('SWUPD_VERSION_URL', True)
+    content_url = d.getVar('SWUPD_CONTENT_BUILD_URL', True)
+    version_url = d.getVar('SWUPD_VERSION_BUILD_URL', True)
     current_format = int(d.getVar('SWUPD_FORMAT', True))
     deploy_dir = d.getVar('DEPLOY_DIR_SWUPD', True)
     www_dir = os.path.join(deploy_dir, 'www')
 
     if not content_url or not version_url:
-        bb.warn('SWUPD_CONTENT_URL and/or SWUPD_VERSION_URL not set, skipping download of old versions for the initial build of a swupd update stream.')
+        bb.warn('SWUPD_CONTENT_BUILD_URL and/or SWUPD_VERSION_BUILD_URL not set, skipping download of old versions for the initial build of a swupd update stream.')
         return
 
     # Avoid double // in path. At least twisted is sensitive to that.
@@ -284,7 +284,7 @@ def download_old_versions(d):
         # point to the older version (no entry in ${DEPLOY_DIR_SWUPD}/www/${OS_VERSION}/files,
         # not even a link).
         if not latest_versions:
-            bb.fatal("%s does not exist and no information was found under SWUPD_CONTENT_URL %s, cannot proceed without information about the previous build. When building the initial version, unset SWUPD_VERSION_URL and SWUPD_CONTENT_URL to proceed." % (latest_version_file, content_url))
+            bb.fatal("%s does not exist and no information was found under SWUPD_CONTENT_BUILD_URL %s, cannot proceed without information about the previous build. When building the initial version, unset SWUPD_VERSION_BUILD_URL and SWUPD_CONTENT_BUILD_URL to proceed." % (latest_version_file, content_url))
         latest = sorted(latest_versions.values())[-1]
         bb.debug(2, "Setting %d in latest.version file" % latest)
         with open(latest_version_file, 'w') as f:

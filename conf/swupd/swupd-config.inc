@@ -12,6 +12,11 @@ python () {
         raise bb.parse.SkipRecipe('OS_VERSION outside of valid range (> 0, <= 2147483647): %d' % ver)
 }
 
+# Main directory in which swupd is invoked. The actual output which needs
+# to be published will be in the "www" sub-directory. In addition, swupd-server
+# uses it as the main work directory.
+DEPLOY_DIR_SWUPD ??= "${DEPLOY_DIR}/swupd/${MACHINE}/${SWUPD_IMAGE_PN}"
+
 # The information about where to find version information and actual
 # content is needed in several places:
 # - the swupd client in the image gets configured such that it uses that as default
@@ -21,21 +26,31 @@ python () {
 # The content URL must have all builds ever produced and is expected to also
 # have the corresponding version information.
 #
-# To build the very first version of an image, set these to empty.
-# Errors while accessing the server (as the non-existent download.example.com)
-# or not having any previous build on that server are fatal. The latter
-# is necessary to detect misconfiguration.
+# The following two variables are used when configuring the swupd client.
 SWUPD_VERSION_URL ??= "http://download.example.com/updates/my-distro/milestone/${MACHINE}/${SWUPD_IMAGE_PN}"
 SWUPD_CONTENT_URL ??= "http://download.example.com/updates/my-distro/builds/${MACHINE}/${SWUPD_IMAGE_PN}"
 
 # An absolute path for a file containing the SSL certificate that is
 # is to be used for verifying https connections to the version and content
-# derver.
+# server. Only used by the swupd client.
 SWUPD_PINNED_PUBKEY ??= ""
 
-# Main directory in which swupd is invoked. The actual output which needs
-# to be published will be in the "www" sub-directory.
-DEPLOY_DIR_SWUPD ??= "${DEPLOY_DIR}/swupd/${MACHINE}/${SWUPD_IMAGE_PN}"
+# These two variables are used during the build process.
+#
+# When doing the initial build for a new update stream, remove DEPLOY_DIR_SWUPD
+# (under TEMPDIR by default, so a build from scratch usually won't have it) without
+# these variables set.
+#
+# For all following builds, either:
+# - preserve the entire DEPLOY_DIR_SWUPD directory and leave the variables unset or
+# - rsync the "www" directory under DEPLOY_DIR_SWUPD into a permanent location
+#   and point to that with file:// or http(s):// URLs.
+#
+# The second approach uses less disk space and may be more efficient, depending on
+# what data is needed from previous builds and how quickly they can be accessed. It
+# is how meta-swupd is currently getting tested.
+SWUPD_VERSION_BUILD_URL ??= ""
+SWUPD_CONTENT_BUILD_URL ??= ""
 
 # User configurable variables to disable all swupd processing or deltapack
 # generation.
