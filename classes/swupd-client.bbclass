@@ -41,7 +41,7 @@ ROOTFS_POSTPROCESS_COMMAND += "swupd_patch_os_release; "
 # containing the seconds since the epoch when the image was created.
 python swupd_create_versionstamp () {
     import time
-    dir = d.getVar('IMAGE_ROOTFS') + '/usr/share/clear'
+    dir = d.getVar('IMAGE_ROOTFS', True) + '/usr/share/clear'
     bb.utils.mkdirhier(dir)
     with open(dir + '/versionstamp', 'w') as f:
         f.write('%d' % time.time())
