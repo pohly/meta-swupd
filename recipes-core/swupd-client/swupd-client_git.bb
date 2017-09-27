@@ -7,6 +7,7 @@ DEPENDS = "glib-2.0 curl openssl libarchive bsdiff"
 
 PV = "3.12.0"
 SRC_URI = "git://github.com/clearlinux/swupd-client.git;protocol=https \
+           file://swupd-update-partition.sh \
            file://0001-swupd-show-tar-errors.patch \
            file://0002-downloads-support-mixing-http-and-file-URLs.patch \
            "
@@ -49,6 +50,10 @@ fix_paths () {
     # /usr/bin/systemctl is currently hard-coded in src/scripts.c update_triggers(),
     # which may or may not be the right path.
     sed -i -e 's;/usr/bin/systemctl;${bindir}/systemctl;g' ${S}/src/*
+}
+
+do_install_append() {
+    install ${WORKDIR}/swupd-update-partition.sh ${D}${bindir}/swupd-update-partition
 }
 
 PACKAGES =+ " \
