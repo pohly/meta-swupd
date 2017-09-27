@@ -56,7 +56,7 @@ PACKAGES =+ " \
 "
 
 # swupd_init() invokes verifytime.
-RDEPENDS_${PN} = "${PN}-verifytime"
+RDEPENDS_${PN}_class-target = "${PN}-verifytime"
 
 FILES_${PN}-verifytime = " \
     ${bindir}/verifytime \
