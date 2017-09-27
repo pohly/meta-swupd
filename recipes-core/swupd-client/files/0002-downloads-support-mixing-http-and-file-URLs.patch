@@ -1,0 +1,151 @@
+From baaf3724c448b3a61e140b5de3c98fd5b997b80b Mon Sep 17 00:00:00 2001
+From: Patrick Ohly <patrick.ohly@intel.com>
+Date: Wed, 27 Sep 2017 13:31:19 +0200
+Subject: [PATCH 2/2] downloads: support mixing http and file URLs
+
+swupd used to enforce that version and content URL had to use the same
+protocol because then it only needed to check once whether it was
+downloading locally.
+
+However, it's not that much more difficult to check each individual
+URL, so now that's what swupd does now and thus the restriction is
+gone.
+
+Upstream-Status: Submitted [https://github.com/clearlinux/swupd-client/issues/257]
+
+Signed-off-by: Patrick Ohly <patrick.ohly@intel.com>
+---
+ include/swupd.h |  2 --
+ src/curl.c      |  1 +
+ src/download.c  |  9 +++++++++
+ src/globals.c   |  4 ----
+ src/helpers.c   | 32 --------------------------------
+ 5 files changed, 10 insertions(+), 38 deletions(-)
+
+diff --git a/include/swupd.h b/include/swupd.h
+index c743423..702ae2f 100644
+--- a/include/swupd.h
++++ b/include/swupd.h
+@@ -134,7 +134,6 @@ struct time {
+ typedef TAILQ_HEAD(timelist, time) timelist;
+ 
+ extern bool download_only;
+-extern bool local_download;
+ extern bool verify_esp_only;
+ extern bool have_manifest_diskspace;
+ extern bool have_network;
+@@ -326,7 +325,6 @@ void update_motd(int new_release);
+ void delete_motd(void);
+ extern int get_dirfd_path(const char *fullname);
+ extern int verify_fix_path(char *targetpath, struct manifest *manifest);
+-extern void set_local_download(void);
+ extern struct list *files_from_bundles(struct list *bundles);
+ extern bool version_files_consistent(void);
+ extern bool string_in_list(char *string_to_check, struct list *list_to_check);
+diff --git a/src/curl.c b/src/curl.c
+index 9025d1d..e73c419 100644
+--- a/src/curl.c
++++ b/src/curl.c
+@@ -200,6 +200,7 @@ int swupd_curl_get_file(const char *url, char *filename, struct file *file,
+ 	long ret = 0;
+ 	int err = -1;
+ 	struct file *local = NULL;
++	bool local_download = strncmp(url, "file://", 7) == 0;
+ 
+ 	if (!curl) {
+ 		abort();
+diff --git a/src/download.c b/src/download.c
+index 4b31771..1465203 100644
+--- a/src/download.c
++++ b/src/download.c
+@@ -348,6 +348,8 @@ static int perform_curl_io_and_complete(int count, bool bounded)
+ 	while (count > 0) {
+ 		CURL *handle;
+ 		struct file *file;
++		char *url = NULL;
++		bool local_download;
+ 
+ 		/* This function may return NULL before processing the
+ 		 * requested number of messages (stored in variable "count").
+@@ -380,6 +382,13 @@ static int perform_curl_io_and_complete(int count, bool bounded)
+ 			continue;
+ 		}
+ 
++		curl_ret = curl_easy_getinfo(handle, CURLINFO_EFFECTIVE_URL, &url);
++		if (curl_ret != CURLE_OK) {
++			curl_easy_cleanup(handle);
++			continue;
++		}
++		local_download = strncmp(url, "file://", 7) == 0;
++
+ 		/* Get error code from easy handle and augment it if
+ 		 * completing the download encounters further problems. */
+ 		curl_ret = msg->data.result;
+diff --git a/src/globals.c b/src/globals.c
+index ade899f..2c779dd 100644
+--- a/src/globals.c
++++ b/src/globals.c
+@@ -63,7 +63,6 @@ char *state_dir = NULL;
+  */
+ bool download_only;
+ bool verbose_time = false;
+-bool local_download = false;
+ bool have_manifest_diskspace = false; /* assume no until checked */
+ bool have_network = false;	    /* assume no access until proved */
+ char *version_url = NULL;
+@@ -541,9 +540,6 @@ bool init_globals(void)
+ 		}
+ 	}
+ 
+-	/* must set this global after version_url and content_url */
+-	set_local_download();
+-
+ #ifdef SIGNATURES
+ 	set_cert_path(NULL);
+ #endif
+diff --git a/src/helpers.c b/src/helpers.c
+index 52fd835..c66bd3d 100644
+--- a/src/helpers.c
++++ b/src/helpers.c
+@@ -859,38 +859,6 @@ end:
+ 	return ret;
+ }
+ 
+-/* In case both version_url and content_url have the file:// prefix, use
+- * libcurl's file protocol to copy files from the local filesystem instead of
+- * downloading from a web server.  The local_download global variable defaults
+- * to false and is used to determine how to handle libcurl results after a
+- * curl_*_perform.
+- */
+-void set_local_download(void)
+-{
+-	bool version_local = false;
+-	bool content_local = false;
+-
+-	if (strncmp(version_url, "file://", 7) == 0) {
+-		version_local = true;
+-	}
+-	if (strncmp(content_url, "file://", 7) == 0) {
+-		content_local = true;
+-	}
+-
+-	/* protocols must match for download logic */
+-	if (version_local != content_local) {
+-		fprintf(stderr, "\nVersion and content URLs must both use the HTTP/HTTPS protocols"
+-				" or the libcurl FILE protocol.\n");
+-		exit(EXIT_FAILURE);
+-	}
+-
+-	if (version_local && content_local) {
+-		local_download = true;
+-	}
+-
+-	return;
+-}
+-
+ struct list *files_from_bundles(struct list *bundles)
+ {
+ 	struct list *files = NULL;
+-- 
+2.11.0
+

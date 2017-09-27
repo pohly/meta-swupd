@@ -6,7 +6,10 @@ LIC_FILES_CHKSUM = "file://COPYING;md5=f8d90fb802930e30e49c39c8126a959e"
 DEPENDS = "glib-2.0 curl openssl libarchive bsdiff"
 
 PV = "3.12.0"
-SRC_URI = "git://github.com/clearlinux/swupd-client.git;protocol=https"
+SRC_URI = "git://github.com/clearlinux/swupd-client.git;protocol=https \
+           file://0001-swupd-show-tar-errors.patch \
+           file://0002-downloads-support-mixing-http-and-file-URLs.patch \
+           "
 SRCREV = "89a47cde78331e4a2b1958da847670e3cfa55fae"
 
 S = "${WORKDIR}/git"
