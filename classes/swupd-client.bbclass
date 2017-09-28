@@ -67,8 +67,12 @@ SWUPD_PINNED_PUBKEY_HASH := "${@ hash_swupd_pinned_pubkey(d)}"
 configure_swupd_client () {
     # Write default values to the configuration hierarchy (since 3.4.0)
     install -d ${IMAGE_ROOTFS}/usr/share/defaults/swupd
-    echo "${SWUPD_VERSION_URL}" >> ${IMAGE_ROOTFS}/usr/share/defaults/swupd/versionurl
-    echo "${SWUPD_CONTENT_URL}" >> ${IMAGE_ROOTFS}/usr/share/defaults/swupd/contenturl
+    if [ "${SWUPD_VERSION_URL}" ]; then
+        echo "${SWUPD_VERSION_URL}" >> ${IMAGE_ROOTFS}/usr/share/defaults/swupd/versionurl
+    fi
+    if [ "${SWUPD_CONTENT_URL}" ]; then
+        echo "${SWUPD_CONTENT_URL}" >> ${IMAGE_ROOTFS}/usr/share/defaults/swupd/contenturl
+    fi
     echo "${SWUPD_FORMAT}" >> ${IMAGE_ROOTFS}/usr/share/defaults/swupd/format
     # Changing content of the pubkey also changes the hash and thus ensures
     # that this method and thus do_rootfs run again.
