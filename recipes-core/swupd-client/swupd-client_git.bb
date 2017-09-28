@@ -42,7 +42,7 @@ EXTRA_OECONF = "\
     --enable-xattr \
 "
 
-PACKAGECONFIG ??= "stateless"
+PACKAGECONFIG ??= ""
 PACKAGECONFIG[stateless] = ",--disable-stateless"
 
 do_patch[postfuncs] += "fix_paths "
