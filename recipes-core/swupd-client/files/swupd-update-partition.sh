@@ -2,8 +2,21 @@
 #
 # Ensures that an entire partition contains exactly the files from
 # a certain OS build and nothing else.
+# https://github.com/clearlinux/swupd-client/issues/249 explains
+# the steps used by this script.
 #
-# See https://github.com/clearlinux/swupd-client/issues/249
+# There are some prerequisites for this script:
+# - the current locale must support UTF-8 encoding because
+#   currently unpacking files relies on that
+#   (https://github.com/clearlinux/swupd-client/issues/280)
+# - there must be enough space on the target partition for
+#   the entire OS plus a compressed archive of the OS
+#   (https://github.com/clearlinux/swupd-client/issues/285)
+# - the swupd update repo must be available via http(s),
+#   and connectivity should be good, because transient
+#   network errors are not handled as well as they could
+#   be (https://github.com/clearlinux/swupd-client/issues/292)
+#
 #
 #      Copyright © 2017 Intel Corporation.
 #
@@ -150,13 +163,18 @@ SWUPDFORMAT=$(cat /usr/share/defaults/swupd/format)
 # SWUPSCRIPTS="--no-scripts"
 SWUPDSCRIPTS=""
 
+# The OS itself may have the file already, but it is not guaranteed to
+# have the right URL. Therefore we write the current URL to the file
+# after each update.
+CONTENTURLFILE="/usr/share/defaults/swupd/contenturl"
+
 # We shouldn't need a version URL, but both "swupd update"
 # and "swupd verify" currently expect it:
 # - update: https://github.com/clearlinux/swupd-client/issues/257
 # - verify: https://github.com/clearlinux/swupd-client/issues/277
 #
 # "swupd update" should take a "-m <numeric version>" number
-# instead.
+# instead of always updating to the latest version.
 #
 # As a workaround, we create a fake version directory here
 # and point to it with a file:// URL.
@@ -165,22 +183,20 @@ mkdir -p "$VERSIONDIR/version/format$SWUPDFORMAT"
 echo "$VERSION" >"$VERSIONDIR/version/format$SWUPDFORMAT/latest"
 VERSIONURL="file://$VERSIONDIR"
 
-# Each of the following commands starts with nothing but the empty
-# mount point and then tries to get the partition updated. They
-# leave the target partition mounted for additional operations on
-# it.
-#
-# The more complex operations are listed first.
-
 main () {
+    if doit; then
+        log "Update successful."
+    else
+        log "Update failed."
+        return 1
+    fi
+}
+
+doit () {
     log "Updating to $VERSION from $CONTENTURL."
     if update_or_install; then
-        # swupd itself doesn't know about /usr/share/swupd/content-url,
-        # which is used and maintained only by this script. So now that
-        # we have switched to the desired OS build, we need to create that
-        # file.
-        if mkdir -p "$MOUNTPOINT/usr/share/swupd/" &&
-           echo "$CONTENTURL" >"$MOUNTPOINT/usr/share/swupd/content-url" &&
+        if mkdir -p "$(dirname "$MOUNTPOINT/$CONTENTURLFILE")" &&
+           echo "$CONTENTURL" > "$MOUNTPOINT/$CONTENTURLFILE" &&
            rm -rf "$STATEDIR" &&
            execute umount "$MOUNTPOINT"; then
             MOUNTED=
@@ -193,16 +209,26 @@ main () {
     fi
 }
 
+# Each of the following commands starts with nothing but the empty
+# mount point and then tries to get the partition updated. They
+# leave the target partition mounted for additional operations on
+# it.
+
 update_or_install () {
     if [ "$FORCE_MKFS" ]; then
         log "Reinstalling from scratch."
         format_and_install
     else
         log "Trying to update."
+        # TODO: detect transient errors and give up early instead of
+        # wiping out existing content (depends on
+        # https://github.com/clearlinux/swupd-client/issues/292).
         if ! update; then
             if [ "$MKFSCMD" ]; then
                 log "Updating failed, falling back to reinstalling from scratch."
                 format_and_install
+            else
+                return 1
             fi
         fi
     fi
@@ -217,6 +243,9 @@ format_and_install () {
        execute mount "$PARTITION" "$MOUNTPOINT"; then
         MOUNTED=1
         log "Installing into empty partition."
+        # TODO: do not run post-install hooks (https://github.com/clearlinux/swupd-client/issues/286)
+        # Currently, systemd is restarted on the host and we get errors like this:
+        # sh: /tmp/tmp.Jt0rVs//usr/bin/clr-boot-manager: No such file or directory
         execute swupd verify --install $SWUPDSCRIPTS -F $SWUPDFORMAT -c "$CONTENTURL" -v "$VERSIONURL" -m "$VERSION" -S "$STATEDIR" -p "$MOUNTPOINT"
     else
         return 1
@@ -228,9 +257,10 @@ update () {
         MOUNTED=1
         # Don't trust existing leftover state on the partition. Merely a precaution.
         rm -rf "$STATEDIR"
-        if [ -f "$MOUNTPOINT/usr/share/swupd/content-url" ] &&
-               [ "$(cat $MOUNTPOINT/usr/share/swupd/content-url)" = "$CONTENTURL" ]; then
+        if [ -f "$MOUNTPOINT/$CONTENTURLFILE" ] &&
+               [ "$(cat $MOUNTPOINT/$CONTENTURLFILE)" = "$CONTENTURL" ]; then
             log "Content URL unchanged, trying to update."
+            # TODO: do not run post-install hooks (https://github.com/clearlinux/swupd-client/issues/286)
             if ! execute swupd update $SWUPDSCRIPTS -c "$CONTENTURL" -v "$VERSIONURL" -S "$STATEDIR" -p "$MOUNTPOINT"; then
                 log "Incremental update failed, falling back to fixing content."
             fi
@@ -239,15 +269,13 @@ update () {
         fi
 
         log "Verifying and fixing content."
+        # TODO: clarify whether --picky is enough to get rid of all unwanted files
+        # (https://github.com/clearlinux/swupd-client/issues/293).
+        # TODO: do not run post-install hooks (https://github.com/clearlinux/swupd-client/issues/286)
         execute swupd verify --fix --picky $SWUPDSCRIPTS -F $SWUPDFORMAT -c "$CONTENTURL" -v "$VERSIONURL" -m "$VERSION" -S "$STATEDIR" -p "$MOUNTPOINT"
     else
         return 1
     fi
 }
 
-if main; then
-    log "Update successful."
-else
-    log "Update failed."
-    return 1
-fi
+main
