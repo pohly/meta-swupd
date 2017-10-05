@@ -448,9 +448,11 @@ END
         for bndl in ${ALL_BUNDLES}; do
             # The zero packs are used by the swupd client when adding bundles.
             # The zero pack for os-core is not needed by the swupd client itself;
-            # in Clear Linux OS it is used by the installer. We could use some
-            # space by skipping the os-core zero bundle, but for now it gets
-            # generated, just in case that it has some future use.
+            # in Clear Linux OS it is used by the installer. We can save some
+            # space and build time by skipping the os-core zero bundle.
+            if [ $bndl = "os-core" ] && ! ${SWUPD_GENERATE_OS_CORE_ZERO_PACK}; then
+                continue
+            fi
             invoke_swupd ${STAGING_BINDIR_NATIVE}/swupd_make_pack_$tool_format --log-stdout $content_url_parameter -S ${DEPLOY_DIR_SWUPD} 0 $os_version $bndl | sed -u -e "s/^/$bndl: /" &
             jobs="$jobs $!"
         done

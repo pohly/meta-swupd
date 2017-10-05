@@ -56,6 +56,20 @@ SWUPD_CONTENT_BUILD_URL ??= ""
 # generation.
 SWUPD_GENERATE ??= "1"
 
+# The zero pack for os-core contains all files that normally are always
+# installed on a device. It is only needed for installing from
+# scratch with "swupd verify --install".
+#
+# If that is not needed, then disabling that zero pack with
+# SWUPD_GENERATE_OS_CORE_ZERO_PACK = "false" can make update data
+# considerably smaller, because only changes need to be stored. Builds
+# also become faster because compressing the zero pack is a bottleneck
+# (see also https://github.com/clearlinux/swupd-server/issues/73).
+#
+# Zero packs for other bundles are always created, because "swupd
+# bundle add/remove" depends on them.
+SWUPD_GENERATE_OS_CORE_ZERO_PACK ??= "true"
+
 # By default, a new swupd update re-uses unchanged files from the
 # previous build ("incremental update") and all changed files are
 # stored in compressed tar archives (one per file). In this mode,
