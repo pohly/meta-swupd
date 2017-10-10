@@ -36,7 +36,7 @@ set -e
 
 usage () {
     cat <<EOF
-$0 -h|-p partition -m version -c contenturl [-f mkfscmd [-F]]
+$0 -h|-p partition -m version -c contenturl [-f mkfscmd [-F]] [-s source]
 
 -h              help message
 -p partition    full path to device entry for the target partition
@@ -45,6 +45,10 @@ $0 -h|-p partition -m version -c contenturl [-f mkfscmd [-F]]
 -f mkfscmd      full command including the partition path that
                 can be used to create a filesystem if needed
 -F              always create a filesystem before installing
+-s source       will be copied over to the target partition file-by-file
+                before updating the target partition; can be a block device
+                which will be mounted or an already mounted filesystem
+                path which will be bind-mounted
 
 Ensures that an entire partition contains exactly the files from a
 certain OS build and nothing else. Incremental updates are tried when
@@ -67,8 +71,9 @@ VERSION=
 CONTENTURL=
 MKFSCMD=
 FORCE_MKFS=
+SOURCE=
 
-while getopts ":hp:m:c:f:F" opt; do
+while getopts ":hp:m:c:f:Fs:" opt; do
     case $opt in
         h)
             usage
@@ -88,6 +93,9 @@ while getopts ":hp:m:c:f:F" opt; do
             ;;
         F)
             FORCE_MKFS=1
+            ;;
+        s)
+            SOURCE="$OPTARG"
             ;;
         \?)
             log "Invalid option: -$OPTARG" >&2
@@ -111,6 +119,8 @@ fi
 
 MOUNTED=
 MOUNTPOINT=
+MOUNTED_SOURCE=
+MOUNTPOINT_SOURCE=
 VERSIONDIR=
 cleanup () {
     if [ "$MOUNTED" ]; then
@@ -119,6 +129,12 @@ cleanup () {
     if [ "$MOUNTPOINT" ]; then
         rmdir "$MOUNTPOINT"
     fi
+    if [ "$MOUNTED_SOURCE" ]; then
+        umount "$MOUNTPOINT_SOURCE"
+    fi
+    if [ "$MOUNTPOINT_SOURCE" ]; then
+        rmdir "$MOUNTPOINT_SOURCE"
+    fi
     if [ "$VERSIONDIR" ]; then
         rm -rf "$VERSIONDIR"
     fi
@@ -126,6 +142,18 @@ cleanup () {
 trap cleanup EXIT
 
 MOUNTPOINT=$(mktemp -t -d swupd-mount.XXXXXX)
+if [ "$SOURCE" ]; then
+    MOUNTPOINT_SOURCE=$(mktemp -t -d swupd-mount-source.XXXXXX)
+    if [ -b "$SOURCE" ]; then
+        log "Mounting source partition."
+        execute mount -oro "$SOURCE" "$MOUNTPOINT_SOURCE"
+    else
+        log "Bind-mounting source tree."
+        execute mount -obind,ro "$SOURCE" "$MOUNTPOINT_SOURCE"
+    fi
+    MOUNTED_SOURCE=1
+fi
+
 
 # The swupd statedir only gets created once and then gets reused
 # across different swupd invocations. The assumption is that swupd
@@ -243,11 +271,28 @@ format_and_install () {
     if execute $MKFSCMD &&
        execute mount "$PARTITION" "$MOUNTPOINT"; then
         MOUNTED=1
-        log "Installing into empty partition."
-        # TODO: do not run post-install hooks (https://github.com/clearlinux/swupd-client/issues/286)
-        # Currently, systemd is restarted on the host and we get errors like this:
-        # sh: /tmp/tmp.Jt0rVs//usr/bin/clr-boot-manager: No such file or directory
-        execute swupd verify --install $SWUPDSCRIPTS -F $SWUPDFORMAT -c "$CONTENTURL" -v "$VERSIONURL" -m "$VERSION" -S "$STATEDIR" -p "$MOUNTPOINT"
+        if [ "$SOURCE" ]; then
+            log "Copy from source $SOURCE."
+            # Create a union of current content on target and source partitions.
+            # Files are intentionally not deleted on the target because they might
+            # re-appear during an update. swupd will delete them if they don't.
+            # The downside of this approach is slightly higher disk overhead and
+            # potentially copying of files that are not needed after all.
+            #
+            # We could do this with rsync:
+            # execute rsync --archive --hard-links --xattrs --acls --devices --specials --super $MOUNTPOINT_SOURCE/ $MOUNTPOINT/
+            #
+            # However, rsync would be another external dependency. We can do the same
+            # with bsdtar.
+            copy_from_source
+            execute swupd verify --fix --picky $SWUPDSCRIPTS -F $SWUPDFORMAT -c "$CONTENTURL" -v "$VERSIONURL" -m "$VERSION" -S "$STATEDIR" -p "$MOUNTPOINT"
+        else
+            log "Installing into empty partition."
+            # TODO: do not run post-install hooks (https://github.com/clearlinux/swupd-client/issues/286)
+            # Currently, systemd is restarted on the host and we get errors like this:
+            # sh: /tmp/tmp.Jt0rVs//usr/bin/clr-boot-manager: No such file or directory
+            execute swupd verify --install $SWUPDSCRIPTS -F $SWUPDFORMAT -c "$CONTENTURL" -v "$VERSIONURL" -m "$VERSION" -S "$STATEDIR" -p "$MOUNTPOINT"
+        fi
     else
         return 1
     fi
@@ -277,6 +322,45 @@ update () {
     else
         return 1
     fi
+}
+
+copy_from_source () {
+    # Copy new or newer (in terms of modification time stamp) files
+    # from the source to the target partition. The modification time
+    # stamps should be preserved by image creation and swupd.
+    # Directories and symlinks only get copied if they don't exist.
+    # That leaves fixing up permissions or symlink content to swupd.
+    #
+    # We skip directories which may have been modified locally.
+    # This could also be made configurable.
+    skip="\( -path ./var -o -path ./home -o -path ./etc \) -prune -o "
+    itemlist="$MOUNTPOINT/swupd-copy-from-source"
+    (cd $MOUNTPOINT_SOURCE && find . -type d -o -type f -o -type l |
+                while read item; do
+                    if [ -h "$MOUNTPOINT/$item" ]; then
+                        if [ -h "$item" ] && [ "$(readlink "$item")" = "$(readlink "$MOUNTPOINT/$item")" ]; then
+                            # Symlinks identical, keep them.
+                            continue
+                        fi
+                    elif [ -d "$MOUNTPOINT/$item" ]; then
+                        if [ -d "$item" ]; then
+                            # Don't try to unpack a directory on top
+                            # of another.  If permissions are
+                            # different, swupd will have to fix them.
+                            continue
+                        fi
+                    elif [ -f "$MOUNTPOINT/$item" ]; then
+                        if [ -f "$MOUNTPOINT/$item" ] && ! [ "$MOUNTPOINT/$item" -ot "$item"  ]; then
+                            # Target file is not older (usually same age or perhaps newer), keep it.
+                            continue
+                        fi
+                    fi
+                    # Remove old entry, whatever it is, so that it can be replaced.
+                    rm -rf "$MOUNTPOINT/$item" || true
+                    echo "$item"
+                done ) > "$itemlist"
+    # Don't fail when copying something doesn't work.
+    bsdtar -ncf - -T "$itemlist" -C "$MOUNTPOINT_SOURCE" | bsdtar -xf - -C "$MOUNTPOINT" || true
 }
 
 main
