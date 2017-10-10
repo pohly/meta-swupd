@@ -45,6 +45,21 @@ EXTRA_OECONF = "\
 PACKAGECONFIG ??= ""
 PACKAGECONFIG[stateless] = ",--disable-stateless"
 
+do_unpack[postfuncs] += "fix_timestamps "
+fix_timestamps () {
+    # Depending on how time stamps are assigned by git, make may end up re-generating
+    # documentation, which then fails because rst2man.py is not found. Avoid that by
+    # ensuring that each man page file has the same time stamp as the corresponding
+    # input .rst file.
+    # See https://github.com/clearlinux/swupd-client/pull/309
+    for i in ${S}/docs/*.rst; do
+        m=${S}/docs/`basename $i .rst`
+        if [ -f $m ]; then
+            touch -r $i $m
+        fi
+    done
+}
+
 do_patch[postfuncs] += "fix_paths "
 fix_paths () {
     # /usr/bin/systemctl is currently hard-coded in src/scripts.c update_triggers(),
