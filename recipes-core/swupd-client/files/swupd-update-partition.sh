@@ -125,7 +125,7 @@ cleanup () {
 }
 trap cleanup EXIT
 
-MOUNTPOINT=$(mktemp -d)
+MOUNTPOINT=$(mktemp -t -d swupd-mount.XXXXXX)
 
 # The swupd statedir only gets created once and then gets reused
 # across different swupd invocations. The assumption is that swupd
@@ -179,7 +179,7 @@ CONTENTURLFILE="/.swupd-contenturl"
 #
 # As a workaround, we create a fake version directory here
 # and point to it with a file:// URL.
-VERSIONDIR=$(mktemp -d)
+VERSIONDIR=$(mktemp -t -d swupd-version.XXXXXX)
 mkdir -p "$VERSIONDIR/version/format$SWUPDFORMAT"
 echo "$VERSION" >"$VERSIONDIR/version/format$SWUPDFORMAT/latest"
 VERSIONURL="file://$VERSIONDIR"
