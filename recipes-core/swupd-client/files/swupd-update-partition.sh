@@ -163,10 +163,11 @@ SWUPDFORMAT=$(cat /usr/share/defaults/swupd/format)
 # SWUPSCRIPTS="--no-scripts"
 SWUPDSCRIPTS=""
 
-# The OS itself may have the file already, but it is not guaranteed to
-# have the right URL. Therefore we write the current URL to the file
-# after each update.
-CONTENTURLFILE="/usr/share/defaults/swupd/contenturl"
+# The OS itself may have a /usr/share/defaults/swupd/contenturl file
+# already, but it is not guaranteed to have the right URL. Therefore
+# we write the current URL to a file that this script owns after each
+# update.
+CONTENTURLFILE="/.swupd-contenturl"
 
 # We shouldn't need a version URL, but both "swupd update"
 # and "swupd verify" currently expect it:
