@@ -20,15 +20,9 @@ DEPENDS_append_class-native = " file-replacement-native bzip2-replacement-native
 SWUPD_SERVER_FORMAT = "4"
 PN = "swupd-server-format${SWUPD_SERVER_FORMAT}"
 FILESEXTRAPATHS_prepend = "${THISDIR}/swupd-server:"
-PV = "3.3.0+git${SRCPV}"
+PV = "3.6.2"
 SRC_URI = "git://github.com/clearlinux/swupd-server.git;protocol=https \
-           file://0025-swupd_make_pack-fix-extracting-files-with-bsdtar.patch \
-           file://0026-fullfiles.c-fix-invalid-LOG-call.patch \
-           file://0027-update-control-over-parallelism.patch \
-           file://0028-enable-locales-in-all-programs.patch \
            file://0029-fullfiles-use-libarchive-directly.patch \
-           file://0001-swupd-create-update-alternative-input-layout.patch \
-           file://0002-add-logging-to-stdout.patch \
            file://0002-pack.c-do-not-clean-packstage.patch \
            file://0003-swupd_create_pack-download-original-files-on-demand-.patch \
            file://0001-create_pack-rely-less-on-previous-builds.patch \
@@ -36,7 +30,7 @@ SRC_URI = "git://github.com/clearlinux/swupd-server.git;protocol=https \
            file://0003-create_pack-abort-delta-handling-early-when-impossib.patch \
            file://0001-type_change.c-allow-transition-dir-symlink.patch \
            "
-SRCREV = "9148ea8a8ecd73720d450d30acc4bceec310ab3b"
+SRCREV = "5ecb58edff9b016e7f0625063843a03d8e96dda2"
 
 S = "${WORKDIR}/git"
 

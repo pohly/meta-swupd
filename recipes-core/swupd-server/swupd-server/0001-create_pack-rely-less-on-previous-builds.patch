@@ -1,7 +1,7 @@
-From 4be3d38364cc1bead38c32465cb7e2f3a0be4c88 Mon Sep 17 00:00:00 2001
+From 6b34feadfa5008b2431fc2a32da2f748eb0338eb Mon Sep 17 00:00:00 2001
 From: Patrick Ohly <patrick.ohly@intel.com>
 Date: Wed, 16 Nov 2016 14:26:30 +0100
-Subject: [PATCH 11/13] create_pack: rely less on previous builds
+Subject: [PATCH 4/7] create_pack: rely less on previous builds
 
 When a file has not been modified in the current build, then by
 definition the current copy of the file is the same as in the build
@@ -39,20 +39,20 @@ Signed-off-by: Patrick Ohly <patrick.ohly@intel.com>
  3 files changed, 62 insertions(+), 49 deletions(-)
 
 diff --git a/include/swupd.h b/include/swupd.h
-index 2263018..1b3a046 100644
+index a1be718..b072ff7 100644
 --- a/include/swupd.h
 +++ b/include/swupd.h
-@@ -247,7 +247,7 @@ extern void type_change_detection(struct manifest *manifest);
+@@ -255,7 +255,7 @@ extern void type_change_detection(struct manifest *manifest);
  
- extern void rename_detection(struct manifest *manifest, int last_change, GList *last_versions_list);
- extern void link_renames(GList *newfiles, struct manifest *from_manifest);
+ extern void rename_detection(struct manifest *manifest);
+ extern void link_renames(GList *newfiles, int to_version);
 -extern void __create_delta(struct file *file, int from_version, char *from_hash);
 +extern void __create_delta(struct file *file, int from_version, int to_version, char *from_hash);
  
  extern void account_delta_hit(void);
  extern void account_delta_miss(void);
 diff --git a/src/delta.c b/src/delta.c
-index 563abb9..8c1bc64 100644
+index 974f862..c446f25 100644
 --- a/src/delta.c
 +++ b/src/delta.c
 @@ -35,7 +35,7 @@
@@ -74,7 +74,7 @@ index 563abb9..8c1bc64 100644
  	string_or_die(&original, "%s/%i/full/%s", conf, from_version, file->peer->filename);
  
 diff --git a/src/pack.c b/src/pack.c
-index a7094b8..f7770b2 100644
+index 6e7b58f..b5d04ce 100644
 --- a/src/pack.c
 +++ b/src/pack.c
 @@ -37,6 +37,7 @@
@@ -86,7 +86,7 @@ index a7094b8..f7770b2 100644
  static void empty_pack_stage(int full, int from_version, int to_version, char *module)
  {
 @@ -149,6 +150,51 @@ static void prepare_pack(struct packdata *pack)
- 	link_renames(pack->end_manifest->files, manifest);
+ 	link_renames(pack->end_manifest->files, pack->to);
  }
  
 +static int stage_entry(struct file *file,
@@ -206,7 +206,7 @@ index a7094b8..f7770b2 100644
  				       numthreads, FALSE, NULL);
  
  	item = g_list_first(files);
-@@ -365,7 +398,7 @@ static int make_final_pack(struct packdata *pack)
+@@ -347,7 +380,7 @@ static int make_final_pack(struct packdata *pack)
  			      file->last_change, file->hash);
  		string_or_die(&tarto, "%s/%s/%i_to_%i/staged/%s.tar", packstage_dir,
  			      pack->module, pack->from, pack->to, file->hash);
@@ -215,7 +215,7 @@ index a7094b8..f7770b2 100644
  		string_or_die(&fullto, "%s/%s/%i_to_%i/staged/%s", packstage_dir,
  			      pack->module, pack->from, pack->to, file->hash);
  
-@@ -399,27 +432,7 @@ static int make_final_pack(struct packdata *pack)
+@@ -381,27 +414,7 @@ static int make_final_pack(struct packdata *pack)
  				}
  			}
  		} else {
@@ -244,7 +244,7 @@ index a7094b8..f7770b2 100644
  			if (ret == 0) {
  				pack->fullcount++;
  			}
-@@ -537,7 +550,7 @@ int make_pack(struct packdata *pack)
+@@ -512,7 +525,7 @@ int make_pack(struct packdata *pack)
  
  	/* step 2: consolidate delta list & create all delta files*/
  	delta_list = consolidate_packs_delta_files(delta_list, pack);
@@ -254,5 +254,5 @@ index a7094b8..f7770b2 100644
  
  	/* step 3: complete pack creation */
 -- 
-2.1.4
+2.11.0
 
