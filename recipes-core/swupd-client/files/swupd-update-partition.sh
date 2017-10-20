@@ -1,23 +1,5 @@
 #!/bin/sh
 #
-# Ensures that an entire partition contains exactly the files from
-# a certain OS build and nothing else.
-# https://github.com/clearlinux/swupd-client/issues/249 explains
-# the steps used by this script.
-#
-# There are some prerequisites for this script:
-# - the current locale must support UTF-8 encoding because
-#   currently unpacking files relies on that
-#   (https://github.com/clearlinux/swupd-client/issues/280)
-# - there must be enough space on the target partition for
-#   the entire OS plus a compressed archive of the OS
-#   (https://github.com/clearlinux/swupd-client/issues/285)
-# - the swupd update repo must be available via http(s),
-#   and connectivity should be good, because transient
-#   network errors are not handled as well as they could
-#   be (https://github.com/clearlinux/swupd-client/issues/292)
-#
-#
 #      Copyright © 2017 Intel Corporation.
 #
 #   This program is free software: you can redistribute it and/or modify
@@ -32,7 +14,34 @@
 #   You should have received a copy of the GNU General Public License
 #   along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-set -e
+
+# Ensures that an entire partition contains exactly the files from
+# a certain OS build and nothing else.
+# https://github.com/clearlinux/swupd-client/issues/249 explains
+# the steps used by this script.
+#
+# There are some prerequisites for this script:
+# - the current locale must support UTF-8 encoding because
+#   currently unpacking files relies on that
+#   (https://github.com/clearlinux/swupd-client/issues/280)
+# - there must be enough space on the target partition for
+#   the entire OS plus a compressed archive of the OS
+#   (https://github.com/clearlinux/swupd-client/issues/285)
+# - the swupd update repo must be available via http(s),
+#   and connectivity should be good; loss of network activity
+#   will be detected
+#
+# The script returns with the following codes:
+# 0 = success
+# 1 = permanent failure, retrying probably won't help
+# 2 = temporary network failure, can be tried again later
+#
+# "set -e" is not used intentionally, instead relying on explicit
+# error checking.
+
+EXIT_SUCCESS=0
+EXIT_FAILURE=1
+EXIT_NETWORK=2
 
 usage () {
     cat <<EOF
@@ -66,6 +75,60 @@ execute () {
     "$@"
 }
 
+execute_swupd () {
+    # This is the only place were we use the network, and thus here
+    # we can exit early when there are network issues.
+    execute swupd "$@"
+    swupd_result=$?
+
+    # swupd has certain undocumented return codes. We can rely on
+    # those already, but further work is needed
+    # (https://github.com/clearlinux/swupd-client/issues/296).
+    # For example, 404 cannot really be returned in practice.
+    #
+    # This list is from https://github.com/clearlinux/swupd-client/blob/22cccd9a045a2615a4b727afa9ed4ea3e39f8010/include/swupd-error.h
+    case $swupd_result in
+        0) : ;;
+        1) log "swupd: return code 1 = unspecific failure";;
+        2) log "swupd: EBUNDLE_MISMATCH = $swupd_result = at least one local bundle mismatches from MoM";;
+        3) log "swupd: EBUNDLE_REMOVE = $swupd_result = cannot delete local bundle filename";;
+        4) log "swupd: EMOM_NOTFOUND = $swupd_result = MoM cannot be loaded into memory (this could imply network issue)"
+            exit_network
+            ;;
+        5) log "swupd: ETYPE_CHANGED_FILE_RM = $swupd_result = do_staging() couldn't delete a file which must be deleted";;
+        6) log "swupd: EDIR_OVERWRITE = $swupd_result = do_staging() couldn't overwrite a directory";;
+        7) log "swupd: EDOTFILE_WRITE = $swupd_result = do_staging() couldn't create a dotfile";;
+        8) log "swupd: ERECURSE_MANIFEST = $swupd_result = error while recursing a manifest";;
+        9) log "swupd: ELOCK_FILE = $swupd_result = cannot get the lock";;
+        10) log "swupd: EPREP_MOUNT = $swupd_result = failed to prepare mount points";;
+        11) log "swupd: ECURL_INIT = $swupd_result = cannot initialize curl agent";;
+        12) log "swupd: EINIT_GLOBALS = $swupd_result = cannot initialize globals";;
+        13) log "swupd: EBUNDLE_NOT_TRACKED = $swupd_result = bundle is not tracked on the system";;
+        14) log "swupd: EMANIFEST_LOAD = $swupd_result = cannot load manifest into memory";;
+        15) log "swupd: EINVALID_OPTION = $swupd_result = invalid command option";;
+        16) log "swupd: ENOSWUPDSERVER = $swupd_result = no net connection to swupd server";;
+        17) log "swupd: EFULLDOWNLOAD = $swupd_result = full_download problem";;
+        404) log "swupd: ENET404 = $swupd_result = download 404'd"
+            exit_network
+            ;;
+        18) log "swupd: EBUNDLE_INSTALL = $swupd_result = Cannot install bundles";;
+        19) log "swupd: EREQUIRED_DIRS = $swupd_result = Cannot create required dirs";;
+        20) log "swupd: ECURRENT_VERSION = $swupd_result = Cannot determine current OS version";;
+        21) log "swupd: ESIGNATURE = $swupd_result = Cannot initialize signature verification";;
+        22) log "swupd: EBADTIME = $swupd_result = System time is bad";;
+        23) log "swupd: EDOWNLOADPACKS = $swupd_result = Pack download failed"
+            exit_network
+            ;;
+        *) log "swupd: unknown return code $swupd_result";;
+    esac
+    return $swupd_result
+}
+
+exit_network () {
+    log "Update failed temporarily."
+    exit $EXIT_NETWORK
+}
+
 PARTITION=
 VERSION=
 CONTENTURL=
@@ -77,7 +140,7 @@ while getopts ":hp:m:c:f:Fs:" opt; do
     case $opt in
         h)
             usage
-            exit 0
+            exit $EXIT_SUCCESS
             ;;
         p)
             PARTITION="$OPTARG"
@@ -99,22 +162,22 @@ while getopts ":hp:m:c:f:Fs:" opt; do
             ;;
         \?)
             log "Invalid option: -$OPTARG" >&2
-            exit 1
+            exit $EXIT_FAILURE
             ;;
         :)
             log "Option -$OPTARG requires an argument." >&2
-            exit 1
+            exit $EXIT_FAILURE
             ;;
     esac
 done
 
 if ! [ "$PARTITION" ] || ! [ "$VERSION" ] || ! [ "$CONTENTURL" ]; then
     log "Partion (-p), version (-m), and content url (-c) must be specified." >&2
-    exit 1
+    exit $EXIT_FAILURE
 fi
 if [ "$FORCE_MKFS" ] && ! [ "$MKFSCMD" ]; then
     log "Filesystem creation requested (-F) without also giving mkfs command (-f)." >&2
-    exit
+    exit $EXIT_FAILURE
 fi
 
 MOUNTED=
@@ -143,13 +206,19 @@ trap cleanup EXIT
 
 MOUNTPOINT=$(mktemp -t -d swupd-mount.XXXXXX)
 if [ "$SOURCE" ]; then
-    MOUNTPOINT_SOURCE=$(mktemp -t -d swupd-mount-source.XXXXXX)
+    if ! MOUNTPOINT_SOURCE=$(mktemp -t -d swupd-mount-source.XXXXXX); then
+        return 1
+    fi
     if [ -b "$SOURCE" ]; then
         log "Mounting source partition."
-        execute mount -oro "$SOURCE" "$MOUNTPOINT_SOURCE"
+        if ! execute mount -oro "$SOURCE" "$MOUNTPOINT_SOURCE"; then
+            return 1
+        fi
     else
         log "Bind-mounting source tree."
-        execute mount -obind,ro "$SOURCE" "$MOUNTPOINT_SOURCE"
+        if ! execute mount -obind,ro "$SOURCE" "$MOUNTPOINT_SOURCE"; then
+            return 1
+        fi
     fi
     MOUNTED_SOURCE=1
 fi
@@ -249,9 +318,6 @@ update_or_install () {
         format_and_install
     else
         log "Trying to update."
-        # TODO: detect transient errors and give up early instead of
-        # wiping out existing content (depends on
-        # https://github.com/clearlinux/swupd-client/issues/292).
         if ! mount_and_update; then
             if [ "$MKFSCMD" ]; then
                 log "Updating failed, falling back to reinstalling from scratch."
@@ -272,14 +338,13 @@ format_and_install () {
        execute mount "$PARTITION" "$MOUNTPOINT"; then
         MOUNTED=1
         if [ "$SOURCE" ]; then
-            copy_from_source
-            update
+            copy_from_source && update
         else
             log "Installing into empty partition."
             # TODO: do not run post-install hooks (https://github.com/clearlinux/swupd-client/issues/286)
             # Currently, systemd is restarted on the host and we get errors like this:
             # sh: /tmp/tmp.Jt0rVs//usr/bin/clr-boot-manager: No such file or directory
-            execute swupd verify --install $SWUPDSCRIPTS -F $SWUPDFORMAT -c "$CONTENTURL" -v "$VERSIONURL" -m "$VERSION" -S "$STATEDIR" -p "$MOUNTPOINT"
+            execute_swupd verify --install $SWUPDSCRIPTS -F $SWUPDFORMAT -c "$CONTENTURL" -v "$VERSIONURL" -m "$VERSION" -S "$STATEDIR" -p "$MOUNTPOINT"
         fi
     else
         return 1
@@ -289,8 +354,8 @@ format_and_install () {
 mount_and_update () {
     if execute mount "$PARTITION" "$MOUNTPOINT"; then
         MOUNTED=1
-        if [ "$SOURCE" ]; then
-            copy_from_source
+        if [ "$SOURCE" ] && ! copy_from_source; then
+            return 1
         fi
         update
     else
@@ -308,7 +373,7 @@ update () {
     else
         log "Content URL unchanged, trying to update."
         # TODO: do not run post-install hooks (https://github.com/clearlinux/swupd-client/issues/286)
-        if ! execute swupd update $SWUPDSCRIPTS -c "$CONTENTURL" -v "$VERSIONURL" -S "$STATEDIR" -p "$MOUNTPOINT"; then
+        if ! execute_swupd update $SWUPDSCRIPTS -c "$CONTENTURL" -v "$VERSIONURL" -S "$STATEDIR" -p "$MOUNTPOINT"; then
             log "Incremental update failed, falling back to fixing content."
         fi
     fi
@@ -317,7 +382,7 @@ update () {
     # TODO: clarify whether --picky is enough to get rid of all unwanted files
     # (https://github.com/clearlinux/swupd-client/issues/293).
     # TODO: do not run post-install hooks (https://github.com/clearlinux/swupd-client/issues/286)
-    execute swupd verify --fix --picky $SWUPDSCRIPTS -F $SWUPDFORMAT -c "$CONTENTURL" -v "$VERSIONURL" -m "$VERSION" -S "$STATEDIR" -p "$MOUNTPOINT"
+    execute_swupd verify --fix --picky $SWUPDSCRIPTS -F $SWUPDFORMAT -c "$CONTENTURL" -v "$VERSIONURL" -m "$VERSION" -S "$STATEDIR" -p "$MOUNTPOINT"
 }
 
 copy_from_source () {
@@ -366,11 +431,19 @@ copy_from_source () {
                         fi
                     fi
                     # Remove old entry, whatever it is, so that it can be replaced.
-                    rm -rf "$MOUNTPOINT/$item" || true
+                    rm -rf "$MOUNTPOINT/$item"
                     echo "$item"
                 done ) > "$itemlist"
-    # Don't fail when copying something doesn't work.
-    bsdtar -ncf - -T "$itemlist" -C "$MOUNTPOINT_SOURCE" | bsdtar -xf - -C "$MOUNTPOINT" || true
+    bsdtar -ncf - -T "$itemlist" -C "$MOUNTPOINT_SOURCE" | bsdtar -xf - -C "$MOUNTPOINT"
+
+    # Don't fail when copying something didn't work.
+    # The code above nevertheless checks for the copy_from_source
+    # return code, so we could indicate fatal errors if we wanted to.
+    return 0
 }
 
-main
+if main; then
+    exit $EXIT_SUCCESS
+else
+    exit $EXIT_FAILURE
+fi
