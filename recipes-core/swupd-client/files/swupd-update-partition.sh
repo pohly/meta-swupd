@@ -252,7 +252,7 @@ update_or_install () {
         # TODO: detect transient errors and give up early instead of
         # wiping out existing content (depends on
         # https://github.com/clearlinux/swupd-client/issues/292).
-        if ! update; then
+        if ! mount_and_update; then
             if [ "$MKFSCMD" ]; then
                 log "Updating failed, falling back to reinstalling from scratch."
                 format_and_install
@@ -272,20 +272,8 @@ format_and_install () {
        execute mount "$PARTITION" "$MOUNTPOINT"; then
         MOUNTED=1
         if [ "$SOURCE" ]; then
-            log "Copy from source $SOURCE."
-            # Create a union of current content on target and source partitions.
-            # Files are intentionally not deleted on the target because they might
-            # re-appear during an update. swupd will delete them if they don't.
-            # The downside of this approach is slightly higher disk overhead and
-            # potentially copying of files that are not needed after all.
-            #
-            # We could do this with rsync:
-            # execute rsync --archive --hard-links --xattrs --acls --devices --specials --super $MOUNTPOINT_SOURCE/ $MOUNTPOINT/
-            #
-            # However, rsync would be another external dependency. We can do the same
-            # with bsdtar.
             copy_from_source
-            execute swupd verify --fix --picky $SWUPDSCRIPTS -F $SWUPDFORMAT -c "$CONTENTURL" -v "$VERSIONURL" -m "$VERSION" -S "$STATEDIR" -p "$MOUNTPOINT"
+            update
         else
             log "Installing into empty partition."
             # TODO: do not run post-install hooks (https://github.com/clearlinux/swupd-client/issues/286)
@@ -298,41 +286,63 @@ format_and_install () {
     fi
 }
 
-update () {
+mount_and_update () {
     if execute mount "$PARTITION" "$MOUNTPOINT"; then
         MOUNTED=1
-        # Don't trust existing leftover state on the partition. Merely a precaution.
-        rm -rf "$STATEDIR"
-        if [ -f "$MOUNTPOINT/$CONTENTURLFILE" ] &&
-               [ "$(cat $MOUNTPOINT/$CONTENTURLFILE)" = "$CONTENTURL" ]; then
-            log "Content URL unchanged, trying to update."
-            # TODO: do not run post-install hooks (https://github.com/clearlinux/swupd-client/issues/286)
-            if ! execute swupd update $SWUPDSCRIPTS -c "$CONTENTURL" -v "$VERSIONURL" -S "$STATEDIR" -p "$MOUNTPOINT"; then
-                log "Incremental update failed, falling back to fixing content."
-            fi
-        else
-            log "New content URL, falling back to fixing content."
+        if [ "$SOURCE" ]; then
+            copy_from_source
         fi
-
-        log "Verifying and fixing content."
-        # TODO: clarify whether --picky is enough to get rid of all unwanted files
-        # (https://github.com/clearlinux/swupd-client/issues/293).
-        # TODO: do not run post-install hooks (https://github.com/clearlinux/swupd-client/issues/286)
-        execute swupd verify --fix --picky $SWUPDSCRIPTS -F $SWUPDFORMAT -c "$CONTENTURL" -v "$VERSIONURL" -m "$VERSION" -S "$STATEDIR" -p "$MOUNTPOINT"
+        update
     else
         return 1
     fi
 }
 
+update () {
+    # Don't trust existing leftover state on the partition. Merely a precaution.
+    rm -rf "$STATEDIR"
+    if ! [ -f "$MOUNTPOINT/$CONTENTURLFILE" ]; then
+        log "No old content URL, falling back to fixing content."
+    elif [ "$(cat "$MOUNTPOINT/$CONTENTURLFILE")" != "$CONTENTURL" ]; then
+        log "Content URL changed ($(cat "$MOUNTPOINT/$CONTENTURLFILE") -> $CONTENTURL), falling back to fixing content."
+    else
+        log "Content URL unchanged, trying to update."
+        # TODO: do not run post-install hooks (https://github.com/clearlinux/swupd-client/issues/286)
+        if ! execute swupd update $SWUPDSCRIPTS -c "$CONTENTURL" -v "$VERSIONURL" -S "$STATEDIR" -p "$MOUNTPOINT"; then
+            log "Incremental update failed, falling back to fixing content."
+        fi
+    fi
+
+    log "Verifying and fixing content."
+    # TODO: clarify whether --picky is enough to get rid of all unwanted files
+    # (https://github.com/clearlinux/swupd-client/issues/293).
+    # TODO: do not run post-install hooks (https://github.com/clearlinux/swupd-client/issues/286)
+    execute swupd verify --fix --picky $SWUPDSCRIPTS -F $SWUPDFORMAT -c "$CONTENTURL" -v "$VERSIONURL" -m "$VERSION" -S "$STATEDIR" -p "$MOUNTPOINT"
+}
+
 copy_from_source () {
-    # Copy new or newer (in terms of modification time stamp) files
-    # from the source to the target partition. The modification time
-    # stamps should be preserved by image creation and swupd.
-    # Directories and symlinks only get copied if they don't exist.
-    # That leaves fixing up permissions or symlink content to swupd.
+    # Create a union of current content on target and source partitions.
+    # Files are intentionally not deleted on the target because they might
+    # re-appear during an update. swupd will delete them if they don't.
+    # The downside of this approach is slightly higher disk overhead and
+    # potentially copying of files that are not needed after all.
+    #
+    # We could do this with rsync:
+    # execute rsync --archive --hard-links --xattrs --acls --devices --specials --super $MOUNTPOINT_SOURCE/ $MOUNTPOINT/
+    #
+    # However, rsync would be another external dependency. We can do the same
+    # with bsdtar by copying new or newer (in terms of modification time stamp) files
+    # from the source to the target partition after ensuring that the target
+    # can be created by deleting any old content under the same name.
+    #
+    # The modification time stamps should be preserved by image
+    # creation and swupd. Directories and symlinks only get copied if
+    # they don't exist. That leaves fixing up permissions or symlink
+    # content to swupd.
     #
     # We skip directories which may have been modified locally.
     # This could also be made configurable.
+    log "Copy from source $SOURCE."
     skip="\( -path ./var -o -path ./home -o -path ./etc \) -prune -o "
     itemlist="$MOUNTPOINT/swupd-copy-from-source"
     (cd $MOUNTPOINT_SOURCE && find . -type d -o -type f -o -type l |
