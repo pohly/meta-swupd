@@ -260,12 +260,6 @@ SWUPDFORMAT=$(cat /usr/share/defaults/swupd/format)
 # SWUPSCRIPTS="--no-scripts"
 SWUPDSCRIPTS=""
 
-# The OS itself may have a /usr/share/defaults/swupd/contenturl file
-# already, but it is not guaranteed to have the right URL. Therefore
-# we write the current URL to a file that this script owns after each
-# update.
-CONTENTURLFILE="/.swupd-contenturl"
-
 # We shouldn't need a version URL, but both "swupd update"
 # and "swupd verify" currently expect it:
 # - update: https://github.com/clearlinux/swupd-client/issues/257
@@ -293,12 +287,11 @@ main () {
 doit () {
     log "Updating to $VERSION from $CONTENTURL."
     if update_or_install; then
-        if mkdir -p "$(dirname "$MOUNTPOINT/$CONTENTURLFILE")" &&
-           echo "$CONTENTURL" > "$MOUNTPOINT/$CONTENTURLFILE" &&
-           rm -rf "$STATEDIR" &&
-           execute umount "$MOUNTPOINT"; then
+        # Explicitly check the unmount result to ensure that the final
+        # write succeeds.
+        if execute umount "$MOUNTPOINT"; then
             MOUNTED=
-            return 0
+            sync
         else
             return 1
         fi
@@ -366,21 +359,20 @@ mount_and_update () {
 update () {
     # Don't trust existing leftover state on the partition. Merely a precaution.
     rm -rf "$STATEDIR"
-    if ! [ -f "$MOUNTPOINT/$CONTENTURLFILE" ]; then
-        log "No old content URL, falling back to fixing content."
-    elif [ "$(cat "$MOUNTPOINT/$CONTENTURLFILE")" != "$CONTENTURL" ]; then
-        log "Content URL changed ($(cat "$MOUNTPOINT/$CONTENTURLFILE") -> $CONTENTURL), falling back to fixing content."
-    else
-        log "Content URL unchanged, trying to update."
-        # TODO: do not run post-install hooks (https://github.com/clearlinux/swupd-client/issues/286)
-        if ! execute_swupd update $SWUPDSCRIPTS -c "$CONTENTURL" -v "$VERSIONURL" -S "$STATEDIR" -p "$MOUNTPOINT"; then
-            log "Incremental update failed, falling back to fixing content."
-        fi
+    log "Trying to update."
+    # TODO: do not run post-install hooks (https://github.com/clearlinux/swupd-client/issues/286)
+    if ! execute_swupd update $SWUPDSCRIPTS -c "$CONTENTURL" -v "$VERSIONURL" -S "$STATEDIR" -p "$MOUNTPOINT"; then
+        log "Incremental update failed, falling back to fixing content."
     fi
 
+    # There are several reasons why we explicitly do a "verify --fix":
+    # - Updating from one update stream to another, unrelated one may have succeeded without actually fully
+    #   updating the system.
+    # - "swupd update" does not remove extra files that might have been copied unnecessarily
+    #   from the source partition.
+    # - "swupd verify" checks file integrity.
     log "Verifying and fixing content."
-    # TODO: clarify whether --picky is enough to get rid of all unwanted files
-    # (https://github.com/clearlinux/swupd-client/issues/293).
+    # TODO: really get rid of all unwanted files (https://github.com/clearlinux/swupd-client/issues/293).
     # TODO: do not run post-install hooks (https://github.com/clearlinux/swupd-client/issues/286)
     execute_swupd verify --fix --picky $SWUPDSCRIPTS -F $SWUPDFORMAT -c "$CONTENTURL" -v "$VERSIONURL" -m "$VERSION" -S "$STATEDIR" -p "$MOUNTPOINT"
 }
