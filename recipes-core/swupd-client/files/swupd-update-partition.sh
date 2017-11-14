@@ -411,7 +411,7 @@ copy_from_source () {
     skip="\( -path ./var -o -path ./home -o -path ./etc \) -prune -o "
     itemlist="$MOUNTPOINT/swupd-copy-from-source"
     (cd $MOUNTPOINT_SOURCE && find . -type d -o -type f -o -type l |
-                while read item; do
+                while read -r item; do
                     if [ -h "$MOUNTPOINT/$item" ]; then
                         if [ -h "$item" ] && [ "$(readlink "$item")" = "$(readlink "$MOUNTPOINT/$item")" ]; then
                             # Symlinks identical, keep them.
