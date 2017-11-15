@@ -55,7 +55,13 @@ python swupdimage_virtclass_handler () {
     # and we don't want that for do_rootfs because its cleandirs
     # variable triggers the creation of the IMGDEPLOYDIR that we
     # are going to write into.
-    e.data.setVar("do_rootfs", "    bb.utils.mkdirhier(d.getVar('IMAGE_ROOTFS', True))\n")
+    e.data.setVar("do_rootfs", """
+    import shutil, os
+    rootfs = d.getVar('IMAGE_ROOTFS', True)
+    if os.path.exists(rootfs):
+        shutil.rmtree(rootfs)
+    bb.utils.mkdirhier(rootfs)
+""")
     # Depends on the content files from those bundles which contribute to the
     # image.
     imageext = d.getVar('IMAGE_BUNDLE_NAME', True) or ''
