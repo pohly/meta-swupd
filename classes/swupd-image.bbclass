@@ -27,6 +27,13 @@ SWUPD_IMAGE_PN = "${@ d.getVar('PN_BASE', True) or d.getVar('PN', True)}"
 # when using simpler file lists).
 DEPENDS += "libarchive-native"
 
+# We need a valid CURL_CA_BUNDLE, due to YOCTO #9883.
+# We could try to avoid the ca-certificates-native dependency
+# here if the default is not used, but it seems to get pulled in already,
+# so that's overkill.
+CURL_CA_BUNDLE ??= "${RECIPE_SYSROOT_NATIVE}/${sysconfdir}/ssl/certs/ca-certificates.crt"
+DEPENDS += "ca-certificates-native"
+
 inherit distro_features_check
 REQUIRED_DISTRO_FEATURES = "systemd"
 
@@ -392,6 +399,9 @@ END
     rm -rf $PSEUDO_LOCALSTATEDIR
     PSEUDO="${FAKEROOTENV} PSEUDO_LOCALSTATEDIR=$PSEUDO_LOCALSTATEDIR ${FAKEROOTCMD}"
 
+    # Explicitly export as part of the command line that we construct.
+    CURL="CURL_CA_BUNDLE=${CURL_CA_BUNDLE} "
+
     # Unpack the input rootfs dir(s) for use with the swupd tools. Might have happened
     # already in a previous run of this task.
     for archive in ${DEPLOY_DIR_SWUPD}/image/*/*.tar; do
@@ -409,8 +419,8 @@ END
     rm -rf ${DEPLOY_DIR_SWUPD}/packstage
 
     invoke_swupd () {
-        echo $PSEUDO "$@"
-        ${SWUPD_TIMING_CMD} env $PSEUDO "$@"
+        echo $PSEUDO $CURL "$@"
+        ${SWUPD_TIMING_CMD} env $CURL $PSEUDO "$@"
     }
 
     waitall () {
