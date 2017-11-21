@@ -471,7 +471,7 @@ index 882e83b..e27d9ce 100644
 -		} else {
 -			ret = rename(bzfile, tarname);
 +		if (archive_write_header(to, entry) ||
-+		    file_content && archive_write_data(to, file_content, file_size) != (ssize_t)file_size ||
++		    (file_content && archive_write_data(to, file_content, file_size) != (ssize_t)file_size) ||
 +		    archive_write_close(to)) {
 +			if (current.maxsize && current.used >= current.maxsize) {
 +				archive_write_free(to);

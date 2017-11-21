@@ -3,7 +3,7 @@ HOMEPAGE = "https://github.com/clearlinux/swupd-server"
 LICENSE = "GPL-2.0"
 LIC_FILES_CHKSUM = "file://COPYING;md5=f8d90fb802930e30e49c39c8126a959e"
 
-DEPENDS = "file glib-2.0 rsync openssl libarchive bsdiff bzip2"
+DEPENDS = "file glib-2.0 rsync openssl libarchive curl bsdiff bzip2"
 # Need the special "-replacement" variant because bzip2 and file
 # are assumed to be provided and would not get built.
 DEPENDS_append_class-native = " file-replacement-native bzip2-replacement-native"
@@ -23,11 +23,11 @@ FILESEXTRAPATHS_prepend = "${THISDIR}/swupd-server:"
 PV = "3.6.2"
 SRC_URI = "git://github.com/clearlinux/swupd-server.git;protocol=https \
            file://0029-fullfiles-use-libarchive-directly.patch \
-           file://0002-pack.c-do-not-clean-packstage.patch \
            file://0003-swupd_create_pack-download-original-files-on-demand-.patch \
            file://0001-create_pack-rely-less-on-previous-builds.patch \
-           file://0002-create_pack-download-fullfile-on-demand-for-packs.patch \
            file://0003-create_pack-abort-delta-handling-early-when-impossib.patch \
+           file://0004-create_pack-download-via-libcurl-libarchive.patch \
+           file://0002-pack.c-do-not-clean-packstage.patch \
            file://0001-type_change.c-allow-transition-dir-symlink.patch \
            "
 SRCREV = "5ecb58edff9b016e7f0625063843a03d8e96dda2"

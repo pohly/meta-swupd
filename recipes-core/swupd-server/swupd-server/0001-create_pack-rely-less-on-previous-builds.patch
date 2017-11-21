@@ -1,7 +1,7 @@
-From 6b34feadfa5008b2431fc2a32da2f748eb0338eb Mon Sep 17 00:00:00 2001
+From 470b13dd69499a89f08f41722ff5ec714547908a Mon Sep 17 00:00:00 2001
 From: Patrick Ohly <patrick.ohly@intel.com>
 Date: Wed, 16 Nov 2016 14:26:30 +0100
-Subject: [PATCH 4/7] create_pack: rely less on previous builds
+Subject: [PATCH 2/6] create_pack: rely less on previous builds
 
 When a file has not been modified in the current build, then by
 definition the current copy of the file is the same as in the build
@@ -18,12 +18,6 @@ available in the CI system) and probably also improves efficiency (no
 need to invoke bsdtar just to create a directory; impact not
 measured).
 
-Also fix a slight flaw in the "target file exists already" handling:
-when that occured for whatever reason (likely only during manual
-debugging), the code would add the original fullfile .tar although it
-isn't needed. Clearing the "ret" variable in that particular error
-case avoids that.
-
 make_pack_full_files() and make_final_pack() used the exact same code
 for populating the "staged" directory. Now that common code is in
 stage_entry().
@@ -35,11 +29,11 @@ Signed-off-by: Patrick Ohly <patrick.ohly@intel.com>
 ---
  include/swupd.h |   2 +-
  src/delta.c     |   4 +--
- src/pack.c      | 105 +++++++++++++++++++++++++++++++-------------------------
- 3 files changed, 62 insertions(+), 49 deletions(-)
+ src/pack.c      | 103 +++++++++++++++++++++++++-------------------------------
+ 3 files changed, 49 insertions(+), 60 deletions(-)
 
 diff --git a/include/swupd.h b/include/swupd.h
-index a1be718..b072ff7 100644
+index f1ca240..cf3c3b2 100644
 --- a/include/swupd.h
 +++ b/include/swupd.h
 @@ -255,7 +255,7 @@ extern void type_change_detection(struct manifest *manifest);
@@ -74,7 +68,7 @@ index 974f862..c446f25 100644
  	string_or_die(&original, "%s/%i/full/%s", conf, from_version, file->peer->filename);
  
 diff --git a/src/pack.c b/src/pack.c
-index 6e7b58f..b5d04ce 100644
+index 29c7758..94ba05d 100644
 --- a/src/pack.c
 +++ b/src/pack.c
 @@ -37,6 +37,7 @@
@@ -85,29 +79,17 @@ index 6e7b58f..b5d04ce 100644
  
  static void empty_pack_stage(int full, int from_version, int to_version, char *module)
  {
-@@ -149,6 +150,51 @@ static void prepare_pack(struct packdata *pack)
+@@ -147,11 +148,44 @@ static void prepare_pack(struct packdata *pack)
  	link_renames(pack->end_manifest->files, pack->to);
  }
  
 +static int stage_entry(struct file *file,
 +		       const char *fullfrom, const char *fullto,
-+		       const char *tarfrom, const char *tarto,
 +		       const char *packname)
 +{
 +	int ret;
 +
-+	/* Prefer to hardlink uncompressed files or replicate
-+	 * directories first, and fall back to the compressed
-+	 * versions if that failed.
-+	 */
-+	if (!file->is_dir) {
-+		ret = link(fullfrom, fullto);
-+		if (ret && errno == EEXIST) {
-+			ret = 0;
-+		} else if (ret) {
-+			LOG(NULL, "Failure to link for pack", "%s: %s to %s (%s) %i", packname, fullfrom, fullto, strerror(errno), errno);
-+		}
-+	} else {
++	if (file->is_dir) {
 +		/* Replicate directory. */
 +		struct stat st;
 +		if ((stat(fullfrom, &st) ||
@@ -122,32 +104,43 @@ index 6e7b58f..b5d04ce 100644
 +		} else {
 +			ret = 0;
 +		}
-+	}
-+
-+	if (ret) {
-+		ret = link(tarfrom, tarto);
-+		if (ret && errno != EEXIST) {
-+			LOG(NULL, "Failure to link for fullfile pack", "%s to %s (%s) %i", tarfrom, tarto, strerror(errno), errno);
++	} else {
++		ret = link(fullfrom, fullto);
++		if (ret && errno == EEXIST) {
++			ret = 0;
++		} else if (ret) {
++			LOG(NULL, "Failure to link for pack", "%s: %s to %s (%s) %i", packname, fullfrom, fullto, strerror(errno), errno);
 +		}
 +	}
 +
 +	return ret;
 +}
 +
++
  static void make_pack_full_files(struct packdata *pack)
  {
  	GList *item;
-@@ -168,32 +214,18 @@ static void make_pack_full_files(struct packdata *pack)
+ 	struct file *file;
+-	int ret;
+ 
+ 	LOG(NULL, "starting pack full file creation", "%s: %d to %d",
+ 	    pack->module, pack->from, pack->to);
+@@ -162,43 +196,17 @@ static void make_pack_full_files(struct packdata *pack)
+ 		file = item->data;
+ 		item = g_list_next(item);
+ 		if ((!file->peer || file->peer->is_deleted) && !file->is_deleted && !file->rename_peer) {
+-			char *from, *to;
  			char *fullfrom, *fullto;
  
- 			/* hardlink each file that is in <end> but not in <X> */
+-			/* hardlink each file that is in <end> but not in <X> */
 -			string_or_die(&fullfrom, "%s/%i/full/%s", image_dir, file->last_change, file->filename);
++			/* stage each entry that is in <end> but not in <X> */
 +			string_or_die(&fullfrom, "%s/%i/full/%s", image_dir, pack->to, file->filename);
  			string_or_die(&fullto, "%s/%s/%i_to_%i/staged/%s", packstage_dir,
  				      pack->module, pack->from, pack->to, file->hash);
- 			string_or_die(&from, "%s/%i/files/%s.tar", staging_dir, file->last_change, file->hash);
- 			string_or_die(&to, "%s/%s/%i_to_%i/staged/%s.tar", packstage_dir,
- 				      pack->module, pack->from, pack->to, file->hash);
+-			string_or_die(&from, "%s/%i/files/%s.tar", staging_dir, file->last_change, file->hash);
+-			string_or_die(&to, "%s/%s/%i_to_%i/staged/%s.tar", packstage_dir,
+-				      pack->module, pack->from, pack->to, file->hash);
  
 -			ret = -1;
 -			errno = 0;
@@ -155,10 +148,7 @@ index 6e7b58f..b5d04ce 100644
 -			/* Prefer to hardlink uncompressed files (excluding
 -			 * directories) first, and fall back to the compressed
 -			 * versions if the hardlink fails.
-+			/* Prefer to hardlink uncompressed files or replicate
-+			 * directories first, and fall back to the compressed
-+			 * versions if that failed.
- 			 */
+-			 */
 -			if (!file->is_dir) {
 -				ret = link(fullfrom, fullto);
 -				if (ret && errno != EEXIST) {
@@ -171,11 +161,18 @@ index 6e7b58f..b5d04ce 100644
 -					LOG(NULL, "Failure to link for fullfile pack", "%s to %s (%s) %i", from, to, strerror(errno), errno);
 -				}
 -			}
-+			ret = stage_entry(file, fullfrom, fullto, from, to, "fullfile");
- 
- 			if (ret == 0) {
+-
+-			if (ret == 0) {
++			if (!stage_entry(file, fullfrom, fullto, "fullfile")) {
  				pack->fullcount++;
-@@ -270,17 +302,18 @@ static GList *consolidate_packs_delta_files(GList *files, struct packdata *pack)
+ 			}
+ 
+-			free(from);
+-			free(to);
+ 			free(fullfrom);
+ 			free(fullto);
+ 		}
+@@ -268,17 +276,18 @@ static GList *consolidate_packs_delta_files(GList *files, struct packdata *pack)
  	return files;
  }
  
@@ -197,7 +194,7 @@ index 6e7b58f..b5d04ce 100644
  {
  	GThreadPool *threadpool;
  	GList *item;
-@@ -290,7 +323,7 @@ static void make_pack_deltas(GList *files)
+@@ -288,7 +297,7 @@ static void make_pack_deltas(GList *files)
  	int numthreads = num_threads(1.0);
  
  	LOG(NULL, "pack deltas threadpool", "%d threads", numthreads);
@@ -206,7 +203,7 @@ index 6e7b58f..b5d04ce 100644
  				       numthreads, FALSE, NULL);
  
  	item = g_list_first(files);
-@@ -347,7 +380,7 @@ static int make_final_pack(struct packdata *pack)
+@@ -345,7 +354,7 @@ static int make_final_pack(struct packdata *pack)
  			      file->last_change, file->hash);
  		string_or_die(&tarto, "%s/%s/%i_to_%i/staged/%s.tar", packstage_dir,
  			      pack->module, pack->from, pack->to, file->hash);
@@ -215,7 +212,7 @@ index 6e7b58f..b5d04ce 100644
  		string_or_die(&fullto, "%s/%s/%i_to_%i/staged/%s", packstage_dir,
  			      pack->module, pack->from, pack->to, file->hash);
  
-@@ -381,27 +414,7 @@ static int make_final_pack(struct packdata *pack)
+@@ -379,27 +388,7 @@ static int make_final_pack(struct packdata *pack)
  				}
  			}
  		} else {
@@ -240,11 +237,11 @@ index 6e7b58f..b5d04ce 100644
 -				}
 -			}
 -
-+			ret = stage_entry(file, fullfrom, fullto, tarfrom, tarto, "final");
++			ret = stage_entry(file, fullfrom, fullto, "final");
  			if (ret == 0) {
  				pack->fullcount++;
  			}
-@@ -512,7 +525,7 @@ int make_pack(struct packdata *pack)
+@@ -510,7 +499,7 @@ int make_pack(struct packdata *pack)
  
  	/* step 2: consolidate delta list & create all delta files*/
  	delta_list = consolidate_packs_delta_files(delta_list, pack);
