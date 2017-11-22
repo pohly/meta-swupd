@@ -5,13 +5,11 @@ LIC_FILES_CHKSUM = "file://COPYING;md5=f8d90fb802930e30e49c39c8126a959e"
 
 DEPENDS = "glib-2.0 curl openssl libarchive bsdiff"
 
-PV = "3.12.0"
+PV = "3.13.1"
 SRC_URI = "git://github.com/clearlinux/swupd-client.git;protocol=https \
            file://swupd-update-partition.sh \
-           file://0001-swupd-show-tar-errors.patch \
-           file://0002-downloads-support-mixing-http-and-file-URLs.patch \
            "
-SRCREV = "89a47cde78331e4a2b1958da847670e3cfa55fae"
+SRCREV = "5126b765e0d81c02ff05d6e233ae9adda381c680"
 
 S = "${WORKDIR}/git"
 
@@ -69,6 +67,9 @@ fix_paths () {
 
 do_install_append() {
     install ${WORKDIR}/swupd-update-partition.sh ${D}${bindir}/swupd-update-partition
+    # swupd-add-pkg relies on mixer, which isn't available, so we do not install
+    # and package swupd-add-pkg either.
+    rm -f ${D}${bindir}/swupd-add-pkg
 }
 
 PACKAGES =+ " \
