@@ -246,7 +246,8 @@ fi
 # The downside is that currently the target partition must have
 # enough extra space to store the pack .tar archives. See
 # https://github.com/clearlinux/swupd-client/issues/285
-STATEDIR="$MOUNTPOINT/swupd-state"
+STATEDIR_RELATIVE="swupd-state"
+STATEDIR="$MOUNTPOINT/$STATEDIR_RELATIVE"
 
 # "swupd verify" requires passing the format explicitly because it
 # attempts to read from the target partition, which is either empty
@@ -254,11 +255,10 @@ STATEDIR="$MOUNTPOINT/swupd-state"
 # format (swupd verify --fix).
 SWUPDFORMAT=$(cat /usr/share/defaults/swupd/format)
 
-# It would be nice if we could suppress the builtin post-update/verify
-# hooks with --no-script, but right now swupd does not support that
-# (see https://github.com/clearlinux/swupd-client/issues/286).
-# SWUPSCRIPTS="--no-scripts"
-SWUPDSCRIPTS=""
+# Suppress all the usual post-update hooks (like restarting systemd)
+# because they don't make sense when not updating the currently
+# running OS.
+SWUPDSCRIPTS="--no-scripts"
 
 # We shouldn't need a version URL, but both "swupd update"
 # and "swupd verify" currently expect it:
@@ -330,13 +330,15 @@ format_and_install () {
     if execute $MKFSCMD &&
        execute mount "$PARTITION" "$MOUNTPOINT"; then
         MOUNTED=1
+        # We remove lost+found here because it is not tracked by swupd
+        # and thus would get removed by "swupd verify --fix" anyway
+        # (see below). It gets re-created by mkfs.ext4 when checking the
+        # file system, should that ever get done.
+        execute rm -rf "$MOUNTPOINT/lost+found"
         if [ "$SOURCE" ]; then
             copy_from_source && update
         else
             log "Installing into empty partition."
-            # TODO: do not run post-install hooks (https://github.com/clearlinux/swupd-client/issues/286)
-            # Currently, systemd is restarted on the host and we get errors like this:
-            # sh: /tmp/tmp.Jt0rVs//usr/bin/clr-boot-manager: No such file or directory
             execute_swupd verify --install $SWUPDSCRIPTS -F $SWUPDFORMAT -c "$CONTENTURL" -v "$VERSIONURL" -m "$VERSION" -S "$STATEDIR" -p "$MOUNTPOINT"
         fi
     else
@@ -360,7 +362,6 @@ update () {
     # Don't trust existing leftover state on the partition. Merely a precaution.
     rm -rf "$STATEDIR"
     log "Trying to update."
-    # TODO: do not run post-install hooks (https://github.com/clearlinux/swupd-client/issues/286)
     if ! execute_swupd update $SWUPDSCRIPTS -c "$CONTENTURL" -v "$VERSIONURL" -S "$STATEDIR" -p "$MOUNTPOINT"; then
         log "Incremental update failed, falling back to fixing content."
     fi
@@ -371,10 +372,11 @@ update () {
     # - "swupd update" does not remove extra files that might have been copied unnecessarily
     #   from the source partition.
     # - "swupd verify" checks file integrity.
+    #
+    # We use --extra-picky, which covers the entire file system and thus will also remove
+    # "lost+found" and any leftover files which might be stored in it.
     log "Verifying and fixing content."
-    # TODO: really get rid of all unwanted files (https://github.com/clearlinux/swupd-client/issues/293).
-    # TODO: do not run post-install hooks (https://github.com/clearlinux/swupd-client/issues/286)
-    execute_swupd verify --fix --picky $SWUPDSCRIPTS -F $SWUPDFORMAT -c "$CONTENTURL" -v "$VERSIONURL" -m "$VERSION" -S "$STATEDIR" -p "$MOUNTPOINT"
+    execute_swupd verify --fix --extra-picky --picky-whitelist ^/$STATEDIR_RELATIVE/ $SWUPDSCRIPTS -F $SWUPDFORMAT -c "$CONTENTURL" -v "$VERSIONURL" -m "$VERSION" -S "$STATEDIR" -p "$MOUNTPOINT"
 }
 
 copy_from_source () {
@@ -397,12 +399,13 @@ copy_from_source () {
     # they don't exist. That leaves fixing up permissions or symlink
     # content to swupd.
     #
-    # We skip directories which may have been modified locally.
-    # This could also be made configurable.
+    # We copy everything. This only works well when the majority
+    # (all?!) of the writable data is elsewhere, otherwise we end up
+    # copying data that just ends up getting removed again by "swupd
+    # verify --fix --extra-picky".
     log "Copy from source $SOURCE."
-    skip="\( -path ./var -o -path ./home -o -path ./etc \) -prune -o "
     itemlist="$MOUNTPOINT/swupd-copy-from-source"
-    (cd $MOUNTPOINT_SOURCE && find . -type d -o -type f -o -type l |
+    (cd $MOUNTPOINT_SOURCE && find . -path ./lost+found -prune -o \( -type d -o -type f -o -type l \) -print |
                 while read -r item; do
                     if [ -h "$MOUNTPOINT/$item" ]; then
                         if [ -h "$item" ] && [ "$(readlink "$item")" = "$(readlink "$MOUNTPOINT/$item")" ]; then
@@ -427,6 +430,7 @@ copy_from_source () {
                     echo "$item"
                 done ) > "$itemlist"
     bsdtar -ncf - -T "$itemlist" -C "$MOUNTPOINT_SOURCE" | bsdtar -xf - -C "$MOUNTPOINT"
+    rm "$itemlist"
 
     # Don't fail when copying something didn't work.
     # The code above nevertheless checks for the copy_from_source
