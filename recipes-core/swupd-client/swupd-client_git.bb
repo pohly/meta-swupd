@@ -8,6 +8,8 @@ DEPENDS = "glib-2.0 curl openssl libarchive bsdiff"
 PV = "3.13.1"
 SRC_URI = "git://github.com/clearlinux/swupd-client.git;protocol=https \
            file://swupd-update-partition.sh \
+           file://0001-swupd-verify-fix-report-removal-errors.patch \
+           file://0002-swupd-verify-fix-picky-add-extra-picky-picky-whiteli.patch \
            "
 SRCREV = "5126b765e0d81c02ff05d6e233ae9adda381c680"
 
