@@ -5,13 +5,11 @@ LIC_FILES_CHKSUM = "file://COPYING;md5=f8d90fb802930e30e49c39c8126a959e"
 
 DEPENDS = "glib-2.0 curl openssl libarchive bsdiff"
 
-PV = "3.13.1"
+PV = "3.14.1"
 SRC_URI = "git://github.com/clearlinux/swupd-client.git;protocol=https \
            file://swupd-update-partition.sh \
-           file://0001-swupd-verify-fix-report-removal-errors.patch \
-           file://0002-swupd-verify-fix-picky-add-extra-picky-picky-whiteli.patch \
            "
-SRCREV = "5126b765e0d81c02ff05d6e233ae9adda381c680"
+SRCREV = "52019f638c44b4fc0da2ec068eac7df4a3224f1f"
 
 S = "${WORKDIR}/git"
 

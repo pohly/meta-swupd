@@ -373,10 +373,10 @@ update () {
     #   from the source partition.
     # - "swupd verify" checks file integrity.
     #
-    # We use --extra-picky, which covers the entire file system and thus will also remove
-    # "lost+found" and any leftover files which might be stored in it.
+    # We start at the root and thus also remove "lost+found" and any
+    # leftover files which might be stored in it.
     log "Verifying and fixing content."
-    execute_swupd verify --fix --extra-picky --picky-whitelist ^/$STATEDIR_RELATIVE/ $SWUPDSCRIPTS -F $SWUPDFORMAT -c "$CONTENTURL" -v "$VERSIONURL" -m "$VERSION" -S "$STATEDIR" -p "$MOUNTPOINT"
+    execute_swupd verify --fix --picky --picky-tree / --picky-whitelist /$STATEDIR_RELATIVE $SWUPDSCRIPTS -F $SWUPDFORMAT -c "$CONTENTURL" -v "$VERSIONURL" -m "$VERSION" -S "$STATEDIR" -p "$MOUNTPOINT"
 }
 
 copy_from_source () {
@@ -402,7 +402,7 @@ copy_from_source () {
     # We copy everything. This only works well when the majority
     # (all?!) of the writable data is elsewhere, otherwise we end up
     # copying data that just ends up getting removed again by "swupd
-    # verify --fix --extra-picky".
+    # verify --fix --picky".
     log "Copy from source $SOURCE."
     itemlist="$MOUNTPOINT/swupd-copy-from-source"
     (cd $MOUNTPOINT_SOURCE && find . -path ./lost+found -prune -o \( -type d -o -type f -o -type l \) -print |
