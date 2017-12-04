@@ -72,7 +72,7 @@ log () {
 
 execute () {
     log "$@"
-    "$@"
+    eval "$@"
 }
 
 execute_swupd () {
