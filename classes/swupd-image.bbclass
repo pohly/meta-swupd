@@ -419,8 +419,8 @@ END
     rm -rf ${DEPLOY_DIR_SWUPD}/packstage
 
     invoke_swupd () {
-        echo $PSEUDO $CURL "$@"
-        ${SWUPD_TIMING_CMD} env $CURL $PSEUDO "$@"
+        echo $PSEUDO env $CURL "$@"
+        eval ${SWUPD_TIMING_CMD} env $CURL $PSEUDO "$@"
     }
 
     waitall () {
