@@ -364,7 +364,7 @@ do_swupd_update () {
 
     ${SWUPD_LOG_FN} "Generating update from $PREVREL (format $PREVFORMAT) to ${OS_VERSION} (format ${SWUPD_FORMAT})"
 
-    # Generate swupd-server configuration
+    # Generate swupd-server and mixer configuration
     bbdebug 2 "Writing ${DEPLOY_DIR_SWUPD}/server.ini"
     if [ -e "${DEPLOY_DIR_SWUPD}/server.ini" ]; then
        rm ${DEPLOY_DIR_SWUPD}/server.ini
@@ -388,6 +388,18 @@ END
         echo "group=$bndl" >> ${GROUPS_INI}
         echo "" >> ${GROUPS_INI}
     done
+    # mixer adds another layer above the original swupd-server functionality.
+    # We don't use much of that, just enough to run "mixer build-update",
+    # which is the part replaces swupd-server.
+    echo "${OS_VERSION}" >${DEPLOY_DIR_SWUPD}/.mixversion
+    echo "1" >${DEPLOY_DIR_SWUPD}/.clearversion
+    # TODO: add CERT and enable signing
+    cat << END >${DEPLOY_DIR_SWUPD}/builder.conf
+[Builder]
+SERVER_STATE_DIR=${DEPLOY_DIR_SWUPD}/
+VERSIONS_PATH=${DEPLOY_DIR_SWUPD}/
+END
+    ln -sf . ${DEPLOY_DIR_SWUPD}/update
 
     # Activate pseudo explicitly for all following commands which need it.
     # We use a database that is specific to the OS_VERSION, because that
@@ -442,53 +454,29 @@ END
         tool_format=$2
         os_version=$3
 
-        # env $PSEUDO bsdtar -acf ${DEPLOY_DIR}/swupd-before-create-update.tar.gz -C ${DEPLOY_DIR} swupd
-        invoke_swupd ${STAGING_BINDIR_NATIVE}/swupd_create_update_$tool_format --log-stdout -S ${DEPLOY_DIR_SWUPD} --osversion $os_version --format $swupd_format
+        # Set up a directory with links to the actual tools. Right now,
+        # mixer is always the same binary, but that'll probably change
+        # once it includes the swupd-server implementation.
+        tools_dir=${DEPLOY_DIR_SWUPD}/tools-format-$tool_format
+        rm -rf $tools_dir
+        mkdir -p $tools_dir
+        ln -s ${STAGING_BINDIR_NATIVE}/swupd_create_update_$tool_format $tools_dir/swupd_create_update
+        ln -s ${STAGING_BINDIR_NATIVE}/swupd_make_fullfiles_$tool_format $tools_dir/swupd_make_fullfiles
+        ln -s ${STAGING_BINDIR_NATIVE}/swupd_make_pack_$tool_format $tools_dir/swupd_make_pack
 
-        ${SWUPD_LOG_FN} "Generating fullfiles for $os_version"
-        # env $PSEUDO bsdtar -acf ${DEPLOY_DIR}/swupd-before-make-fullfiles.tar.gz -C ${DEPLOY_DIR} swupd
-        invoke_swupd ${STAGING_BINDIR_NATIVE}/swupd_make_fullfiles_$tool_format --log-stdout -S ${DEPLOY_DIR_SWUPD} $os_version
-
-        ${SWUPD_LOG_FN} "Generating zero packs, this can take some time."
-        # env $PSEUDO bsdtar -acf ${DEPLOY_DIR}/swupd-before-make-zero-pack.tar.gz -C ${DEPLOY_DIR} swupd
-        # Generating zero packs isn't parallelized internally. Mostly it just
-        # spends its time compressing a single tar archive. Therefore we parallelize
-        # by forking each command and then waiting for all of them to complete.
-        jobs=""
-        for bndl in ${ALL_BUNDLES}; do
-            # The zero packs are used by the swupd client when adding bundles.
-            # The zero pack for os-core is not needed by the swupd client itself;
-            # in Clear Linux OS it is used by the installer. We can save some
-            # space and build time by skipping the os-core zero bundle.
-            if [ $bndl = "os-core" ] && ! ${SWUPD_GENERATE_OS_CORE_ZERO_PACK}; then
-                continue
-            fi
-            invoke_swupd ${STAGING_BINDIR_NATIVE}/swupd_make_pack_$tool_format --log-stdout $content_url_parameter -S ${DEPLOY_DIR_SWUPD} 0 $os_version $bndl | sed -u -e "s/^/$bndl: /" &
-            jobs="$jobs $!"
+        # mixer checks for some commands although they are not needed (createrepo_c, parallel, yum).
+        # hardlink is called, but not absolutely required. parallel is needed at the moment, but should
+        # go away. We just use /bin/true, which then skips delta pack creation.
+        for i in createrepo_c yum; do
+            ln -s $(which false) $tools_dir/$i
+        done
+        for i in hardlink parallel; do
+            ln -s $(which true) $tools_dir/$i
         done
 
-        # Generate delta-packs against previous versions chosen by our caller,
-        # if possible. Different formats make this useless because the previous
-        # version won't be able to update to the new version directly.
-        # env $PSEUDO bsdtar -acf ${DEPLOY_DIR}/swupd-before-make-delta-pack.tar.gz -C ${DEPLOY_DIR} swupd
-        for prevver in ${SWUPD_DELTAPACK_VERSIONS}; do
-            old_swupd_format=`swupd_format_of_version $prevver`
-            if [ $old_swupd_format -eq $swupd_format ]; then
-                for bndl in ${ALL_BUNDLES}; do
-                    ${SWUPD_LOG_FN} "Generating delta pack from $prevver to $os_version for $bndl"
-                    invoke_swupd ${STAGING_BINDIR_NATIVE}/swupd_make_pack_$tool_format --log-stdout $content_url_parameter -S ${DEPLOY_DIR_SWUPD} $prevver $os_version $bndl | sed -u -e "s/^/$prevver $bndl: /" &
-                    jobs="$jobs $!"
-                done
-            fi
-        done
-
-        waitall $jobs
-
-        # Write version to www/version/format$swupd_format/latest.
-        bbdebug 2 "Writing latest file"
-        mkdir -p ${DEPLOY_DIR_SWUPD}/www/version/format$swupd_format
-        echo $os_version > ${DEPLOY_DIR_SWUPD}/www/version/format$swupd_format/latest
-        # env $PSEUDO bsdtar -acf ${DEPLOY_DIR}/swupd-done.tar.gz -C ${DEPLOY_DIR} swupd
+        # TODO:
+        # - suppress zero-pack for os-core
+        invoke_swupd env PATH=$tools_dir:${STAGING_BINDIR_NATIVE}:\$PATH mixer build-update -config ${DEPLOY_DIR_SWUPD}/builder.conf -no-signing -keep-chroots -format $swupd_format
     }
 
     if [ $PREVFORMAT -ne ${SWUPD_FORMAT} ]; then
@@ -507,6 +495,7 @@ SWUPDDEPENDS = "\
     virtual/fakeroot-native:do_populate_sysroot \
     rsync-native:do_populate_sysroot \
     bsdiff-native:do_populate_sysroot \
+    mixer-tools-native:do_populate_sysroot \
     ${@ ' '.join(['swupd-server-format%s-native:do_populate_sysroot' % x for x in '${SWUPD_SERVER_FORMATS}'.split()])} \
 "
 

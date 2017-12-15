@@ -25,11 +25,19 @@ SRCREV_sys = "9167dbfd0f8e88b731dd88cbf73a270701a37bb4"
 
 inherit go
 
-unpack_additional () {
-    for i in builder helpers; do
-        ln -fs ${S}/src/$i ${GOPATH}/src/$i
-    done
+# The mixer-tools use plain "import helpers" without path, so we have
+# to extend GOPATH to avoid "cannot find package "helpers" in any
+# of..."  errors.
+GOPATH .= ":${B}/src/${GO_IMPORT}"
+
+do_install_append () {
+    install -d ${D}${bindir}
+    install -m 755 ${S}/src/${GO_IMPORT}pack-maker.sh ${D}${bindir}/mixer-pack-maker.sh
 }
-do_unpack[postfuncs] += "unpack_additional"
+
+# mixer depends at runtime on tools like swupd-server. The recipe
+# itself does not try to hide that behind RDEPENDS, because callers
+# like swupd-image.bbclass will have to do extra work anyway to handle
+# format changes.
 
 BBCLASSEXTEND = "native nativesdk"
