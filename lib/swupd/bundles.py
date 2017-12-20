@@ -5,6 +5,7 @@ import subprocess
 import shutil
 import urllib.request
 import urllib.error
+import urllib.parse
 from bb.utils import export_proxies
 from oe.package_manager import RpmPM
 from oe.package_manager import OpkgPM
@@ -153,6 +154,27 @@ def copy_bundle_contents(d):
     for bndl in bundles:
         stage_empty_bundle(d, bndl)
 
+def handle_plain_auth(url):
+    """
+    Check for special urls with username/password (as in http://user:password@host/),
+    extract those and install an auth handler which will provide them
+    to the HTTP server when needed. Returns the URL that is to be instead of the original one.
+    """
+    parsed_url = urllib.parse.urlsplit(url)
+    if parsed_url.username != None:
+        # Use the netloc with just the hostname, without username/password.
+        parsed_url.netloc = parsed_url.hostname
+        # The username/password are installed permanently in the urllib.request module
+        # for future use with all URLs beneath url.
+        manager = urllib.request.HTTPPasswordMgrWithDefaultRealm()
+        manager.add_password(None, parsed_url, parsed_url.username, parsed_url.password)
+        authHandler = urllib.request.HTTPBasicAuthHandler(manager)
+        opener = urllib.request.build_opener(authHandler)
+        urllib.request.install_opener(opener)
+        return urllib.parse.urlunsplit(new_source)
+    else:
+        return url
+
 def download_manifests(content_url, version, component, to_dir):
     """
     Download one manifest file and recursively all manifests referenced by it.
@@ -204,8 +226,8 @@ def download_old_versions(d):
     a normal build and thus is not on the critical path.
     """
 
-    content_url = d.getVar('SWUPD_CONTENT_BUILD_URL', True)
-    version_url = d.getVar('SWUPD_VERSION_BUILD_URL', True)
+    content_url = handle_plain_auth(d.getVar('SWUPD_CONTENT_BUILD_URL', True))
+    version_url = handle_plain_auth(d.getVar('SWUPD_VERSION_BUILD_URL', True))
     current_format = int(d.getVar('SWUPD_FORMAT', True))
     deploy_dir = d.getVar('DEPLOY_DIR_SWUPD', True)
     www_dir = os.path.join(deploy_dir, 'www')
