@@ -216,6 +216,7 @@ def download_old_versions(d):
 
     # Avoid double // in path. At least twisted is sensitive to that.
     content_url = content_url.rstrip('/')
+    version_url = version_url.rstrip('/')
 
     # Set up env variables with proxy information for use in urllib.
     export_proxies(d)
@@ -228,7 +229,7 @@ def download_old_versions(d):
     latest_versions = {}
     for format in range(3, current_format + 1):
         try:
-            url = '%s/version/format%d/latest' % (content_url, format)
+            url = '%s/version/format%d/latest' % (version_url, format)
             response = urllib.request.urlopen(url)
             version = int(response.read())
             latest_versions[format] = version
