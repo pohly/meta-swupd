@@ -61,8 +61,9 @@ fix_timestamps () {
 do_patch[postfuncs] += "fix_paths "
 fix_paths () {
     # /usr/bin/systemctl is currently hard-coded in src/scripts.c update_triggers(),
-    # which may or may not be the right path.
-    sed -i -e 's;/usr/bin/systemctl;${bindir}/systemctl;g' ${S}/src/*
+    # which may or may not be the right path. The systemd recipe uses ${base_bindir}/systemctl,
+    # so do the same here.
+    sed -i -e 's;/usr/bin/systemctl;${base_bindir}/systemctl;g' ${S}/src/*
 }
 
 do_install_append() {
